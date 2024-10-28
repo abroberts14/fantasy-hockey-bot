@@ -7,7 +7,7 @@ on:
     branches: [ "master" ]
   schedule:
     - cron: '*/10 0-2,15-23 * * *'
-  workflow_dispatch:  # This line enables manual triggers through GitHub UI
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,11 +27,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Set Timezone
-      # You may pin to the exact commit or the version.
-      # uses: szenius/set-timezone@dd47655c84241eec2ffa0a855959c16c0920c3c4
       uses: szenius/set-timezone@v1.0
       with:
-        # Desired timezone for Linux
         timezoneLinux: "America/New_York"
     - name: Set up Python 3.12
       uses: actions/setup-python@v3
@@ -42,6 +39,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Make hockey.py executable
+      run: chmod +x hockey.py
     - name: Run Hockey Bot
       run: |
         ./hockey.py
