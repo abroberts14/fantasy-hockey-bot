@@ -46,7 +46,7 @@ class Config:
             self.gameKey = os.environ["GAME_KEY"]
             self.leagueId = os.environ["LEAGUE_ID"]
             self.teamId = os.environ["TEAM_ID"]
-            self.logger.info(f"Loaded credentials from environment variables")
+            self.logger.info("Loaded credentials from environment variables")
             self.logger.info(f"Team ID: {self.teamId}")
             self.logger.info(f"League ID: {self.leagueId}")
             self.logger.info(f"Game Key: {self.gameKey}")

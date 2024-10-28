@@ -36,15 +36,17 @@ class RosterManager:
         logging.info("Getting player data...")
         team = [
             self._build_player_data(player)
-            for player in roster["fantasy_content"]["team"]["roster"]["players"][
-                "player"
-            ]
+            for player in roster["fantasy_content"]["team"]["roster"][
+                "players"
+            ]["player"]
         ]
         return team
 
     def _build_player_data(self, player):
         player_data = self.yApi.getPlayerData(player["player_key"])
-        player_data["current_position"] = player["selected_position"]["position"]
+        player_data["current_position"] = player["selected_position"][
+            "position"
+        ]
         player_data["key"] = player["player_key"]
         return player_data
 
@@ -86,7 +88,7 @@ class RosterManager:
         # Step 1: Calculate the best lineup based on provided roster
         calculated_lineup = self.calculate_best_lineup(roster)
         completed_swaps = []
-        logging.info(f"Initial calculated lineup: {calculated_lineup}")
+        logging.debug(f"Initial calculated lineup: {calculated_lineup}")
 
         # Step 2: Get league required roster and convert to a count of each position
         required_roster_list = self.yApi.getLeagueRequiredRoster()
@@ -101,7 +103,9 @@ class RosterManager:
             if not isinstance(player, list):
                 calculated_lineup[position] = [player]
             filled_positions_count[position] += len(calculated_lineup[position])
-            used_player_keys.update(p["key"] for p in calculated_lineup[position])
+            used_player_keys.update(
+                p["key"] for p in calculated_lineup[position]
+            )
 
         # Populate each position to meet the required count
         for position, required_count in required_roster.items():
@@ -129,15 +133,16 @@ class RosterManager:
         calculated_lineup["BN"] = bench_players
 
         # Log final calculated lineup with all required positions filled, including bench
-        logging.info(f"Final calculated lineup including bench: {calculated_lineup}")
+        logging.debug(
+            f"Final calculated lineup including bench: {calculated_lineup}"
+        )
 
         # Step 4: Send the fully populated lineup payload to Yahoo
-        self.yApi.roster_payload_manager.fill_missing_positions(calculated_lineup)
+        self.yApi.roster_payload_manager.fill_roster(calculated_lineup)
 
         return completed_swaps
 
     def get_players_by_position(self, roster):
-
         players_by_position = {}
 
         # Iterate through each player in the roster
@@ -151,15 +156,22 @@ class RosterManager:
         # Sort each list of players by points in descending order and game today status
         for position, players in players_by_position.items():
             players_by_position[position] = sorted(
-                players, key=lambda x: (-x["points"], x["next_game"] != self.today)
+                players,
+                key=lambda x: (-x["points"], x["next_game"] != self.today),
             )
         return players_by_position
 
-    def output_sorted_roster(self, roster, completed_swaps=None, only_swaps=False):
+    def output_sorted_roster(
+        self, roster, completed_swaps=None, only_swaps=False
+    ):
         sorted_roster = self.sort_roster(roster)
         if not only_swaps:
-            self.log_roster(sorted_roster, "Active players:", exclude_position="BN")
-            self.log_roster(sorted_roster, "Bench players:", include_position="BN")
+            self.log_roster(
+                sorted_roster, "Active players:", exclude_position="BN"
+            )
+            self.log_roster(
+                sorted_roster, "Bench players:", include_position="BN"
+            )
         if completed_swaps:
             self.log_completed_swaps(completed_swaps)
 
@@ -174,8 +186,12 @@ class RosterManager:
     def log_roster(roster, title, exclude_position=None, include_position=None):
         logging.info(title)
         for line in roster:
-            if (exclude_position and line["current_position"] != exclude_position) or (
-                include_position and line["current_position"] == include_position
+            if (
+                exclude_position
+                and line["current_position"] != exclude_position
+            ) or (
+                include_position
+                and line["current_position"] == include_position
             ):
                 logging.info(
                     f"{line['current_position']}: {line['name']} (Avail Pos: {', '.join(line['available_positions'])})"

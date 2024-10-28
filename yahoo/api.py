@@ -13,7 +13,9 @@ from yahoo.payload_manager import RosterPayloadManager
 
 class YahooApi:
     def __init__(self, directory_path):
-        self.logger = logging.getLogger(__name__)  # Get the root logger set in main.py
+        self.logger = logging.getLogger(
+            __name__
+        )  # Get the root logger set in main.py
         self.config = Config(directory_path)
         self.logger.info("Initializing YahooApi")
         self.logger.info("Getting credentials")
@@ -30,7 +32,7 @@ class YahooApi:
 
         oauth = self.config.readOAuthToken()
         header = "Bearer " + oauth["token"]
-        self.logger.info("URL: %s" % url)
+        self.logger.debug("URL: %s" % url)
         response = requests.get(url, headers={"Authorization": header})
 
         if response.status_code == 200:
@@ -100,12 +102,12 @@ class YahooApi:
         )
         playerData = self.queryYahooApi(rosterUrl, "player")
         player = {}
-        player["name"] = playerData["fantasy_content"]["league"]["players"]["player"][
-            "name"
-        ]["full"]
-        player["team"] = playerData["fantasy_content"]["league"]["players"]["player"][
-            "editorial_team_full_name"
-        ]
+        player["name"] = playerData["fantasy_content"]["league"]["players"][
+            "player"
+        ]["name"]["full"]
+        player["team"] = playerData["fantasy_content"]["league"]["players"][
+            "player"
+        ]["editorial_team_full_name"]
         player["available_positions"] = playerData["fantasy_content"]["league"][
             "players"
         ]["player"]["eligible_positions"]["position"]
@@ -121,17 +123,20 @@ class YahooApi:
         else:
             player["new_notes_timestamp"] = "-1"
         player["isGoalie"] = (
-            player["available_positions"] == "G" or "G" in player["available_positions"]
+            player["available_positions"] == "G"
+            or "G" in player["available_positions"]
         )
 
         points = 0
 
-        for stat in playerData["fantasy_content"]["league"]["players"]["player"][
-            "player_stats"
-        ]["stats"]["stat"]:
+        for stat in playerData["fantasy_content"]["league"]["players"][
+            "player"
+        ]["player_stats"]["stats"]["stat"]:
             if stat["value"] == "-":
                 points += 0
-            elif stat["stat_id"] == "22":  # Goals Against counts against overall score
+            elif (
+                stat["stat_id"] == "22"
+            ):  # Goals Against counts against overall score
                 points -= int(stat["value"])
             elif stat["stat_id"] == "23":  # GAA counts against overall score
                 points -= float(stat["value"])
@@ -159,9 +164,9 @@ class YahooApi:
         Returns a list of positions based on the league's roster configuration.
         """
         # Extract roster positions from the league settings
-        roster_positions = self.getLeagueSettings()["fantasy_content"]["league"][
-            "settings"
-        ]["roster_positions"]["roster_position"]
+        roster_positions = self.getLeagueSettings()["fantasy_content"][
+            "league"
+        ]["settings"]["roster_positions"]["roster_position"]
 
         # Create a list to hold the full lineup based on the league settings
         full_lineup = []
