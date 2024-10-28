@@ -29,7 +29,6 @@ class Config:
         self._load_credentials()
 
     def _load_credentials(self):
-
         credentials_path = os.path.join(self.directory_path, "credentials.json")
         logging.info(f"Credentials path: {credentials_path}")
         if os.path.exists(credentials_path):
@@ -47,7 +46,10 @@ class Config:
             self.gameKey = os.environ["GAME_KEY"]
             self.leagueId = os.environ["LEAGUE_ID"]
             self.teamId = os.environ["TEAM_ID"]
-
+            self.logger.info(f"Loaded credentials from environment variables")
+            self.logger.info(f"Team ID: {self.teamId}")
+            self.logger.info(f"League ID: {self.leagueId}")
+            self.logger.info(f"Game Key: {self.gameKey}")
         if "YAHOO_TOKEN" in os.environ:
             try:
                 oauth = json.loads(os.environ["YAHOO_TOKEN"])
@@ -65,7 +67,6 @@ class Config:
             open(self.token_path, "r")
             self.hasToken = True
         except IOError as e:
-
             if "No such file or directory" in e.strerror:
                 self.hasToken = False
             else:
