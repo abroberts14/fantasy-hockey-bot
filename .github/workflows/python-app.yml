@@ -1,0 +1,51 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Python application
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  schedule:
+    - cron: '*/10 0-2,15-23 * * *'
+
+permissions:
+  contents: read
+
+env:
+  CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
+  CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
+  GAME_KEY: ${{ secrets.GAME_KEY }}
+  LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
+  TEAM_ID: ${{ secrets.TEAM_ID }}
+  YAHOO_TOKEN: ${{ secrets.YAHOO_TOKEN }}
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set Timezone
+      # You may pin to the exact commit or the version.
+      # uses: szenius/set-timezone@dd47655c84241eec2ffa0a855959c16c0920c3c4
+      uses: szenius/set-timezone@v1.0
+      with:
+        # Desired timezone for Linux
+        timezoneLinux: "America/New_York"
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.12"
+    - name: Install dependencies
+
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pytest
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Run Hockey Bot
+      run: |
+        ./hockey.py
