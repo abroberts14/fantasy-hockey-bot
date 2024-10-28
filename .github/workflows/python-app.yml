@@ -15,9 +15,9 @@ permissions:
 env:
   CONSUMER_KEY: ${{ secrets.CONSUMER_KEY }}
   CONSUMER_SECRET: ${{ secrets.CONSUMER_SECRET }}
-  GAME_KEY: ${{ secrets.GAME_KEY }}
-  LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
-  TEAM_ID: ${{ secrets.TEAM_ID }}
+  GAME_KEY: ${{ vars.GAME_KEY }}
+  LEAGUE_ID: ${{ vars.LEAGUE_ID }}
+  TEAM_ID: ${{ vars.TEAM_ID }}
   YAHOO_TOKEN: ${{ secrets.YAHOO_TOKEN }}
 
 jobs:
