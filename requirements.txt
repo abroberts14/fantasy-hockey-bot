@@ -4,3 +4,5 @@ idna==3.4
 requests==2.28.1
 urllib3==1.26.12
 xmltodict==0.13.0
+yahoo-oauth==2.1.0
+yahoo_fantasy_api==2.0.1
