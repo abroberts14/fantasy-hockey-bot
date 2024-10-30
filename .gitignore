@@ -163,3 +163,5 @@ cython_debug/
 /pyenv
 credentials.json
 tokenData.conf
+secrets.json
+team.json

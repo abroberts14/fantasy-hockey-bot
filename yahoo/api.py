@@ -8,7 +8,8 @@ from util.config import NEXT_GAME_URL, Config
 from util.constants import BASE_YAHOO_API_URL, NHL_TEAM_ID, TOKEN_PATH
 import json
 import os
-from yahoo.payload_manager import RosterPayloadManager
+from yahoo_oauth import OAuth2
+import yahoo_fantasy_api as yfa
 
 
 class YahooApi:
@@ -20,10 +21,52 @@ class YahooApi:
         self.logger.info("Initializing YahooApi")
         self.logger.info("Getting credentials")
         self.credentials = self.config.getCredentials()
-        self.roster_payload_manager = RosterPayloadManager(
-            self.credentials, self.config
-        )
+
         self.logger.info("Checking token")
+        self.oauth_file = os.path.join(directory_path, "tokens/secrets.json")
+        if not os.path.exists(self.oauth_file):
+            self.oauth_json_gen()
+        self.oauth_setup()
+        # Initialize game, league and team objects
+        self.logger.info("Initializing Yahoo Fantasy objects")
+        self.league_key = (
+            f"{self.credentials['gameKey']}.l.{self.credentials['leagueId']}"
+        )
+        self.team_key = f"{self.league_key}.t.{self.credentials['teamId']}"
+        try:
+            # Create game object for NHL
+            self.game = yfa.Game(self.sc, "nhl")
+
+            # Create league object using credentials
+            self.league = self.game.to_league(self.league_key)
+            self.league_positions = self.league.positions()
+            self.league_settings = self.league.settings()
+            self.max_moves = self.league_settings["max_weekly_adds"]
+            self.team = self.league.to_team(self.team_key)
+
+            self.team_data = self.league.teams()[self.team_key]
+            self.logger.info("Successfully initialized Yahoo Fantasy objects")
+        except Exception as e:
+            self.logger.error(
+                f"Failed to initialize Yahoo Fantasy objects: {str(e)}"
+            )
+            raise
+
+    def oauth_json_gen(self):
+        if self.credentials["consumerKey"] is None:
+            raise RuntimeError("Must specify the <consumer_key> option")
+        if self.credentials["consumerSecret"] is None:
+            raise RuntimeError("Must specify the <consumer_secret> option")
+        creds = {}
+        creds["consumer_key"] = self.credentials["consumerKey"]
+        creds["consumer_secret"] = self.credentials["consumerSecret"]
+        with open(self.oauth_file, "w") as f:
+            f.write(json.dumps(creds))
+
+    def oauth_setup(self):
+        self.sc = OAuth2(None, None, from_file=self.oauth_file)
+        if not self.sc.token_is_valid():
+            self.sc.refresh_access_token()
 
     def queryYahooApi(self, url, dataType):
         """
@@ -53,37 +96,17 @@ class YahooApi:
             self.logger.error("-------END DEBUG------")
             sys.exit(1)
 
-    def getLeagueSettings(self):
+    def get_roster(self):
         """
-        Get the league settings from Yahoo and parses the response
+        Get the roster from Yahoo using the yahoo-fantasy-api library
         """
+        # G the roster
+        roster = self.team.roster()
 
-        rosterUrl = (
-            BASE_YAHOO_API_URL
-            + "league/"
-            + self.credentials["gameKey"]
-            + ".l."
-            + self.credentials["leagueId"]
-            + "/settings"
-        )
-        return self.queryYahooApi(rosterUrl, "league")
+        return roster
 
-    def getRoster(self):
-        """
-        Get the roster from Yahoo and parses the response
-        """
-
-        rosterUrl = (
-            BASE_YAHOO_API_URL
-            + "team/"
-            + str(self.credentials["gameKey"])
-            + ".l."
-            + str(self.credentials["leagueId"])
-            + ".t."
-            + str(self.credentials["teamId"])
-            + "/roster/players"
-        )
-        return self.queryYahooApi(rosterUrl, "roster")
+    def get_league(self):
+        return self.league
 
     def getPlayerData(self, playerKey):
         """
@@ -97,7 +120,7 @@ class YahooApi:
             + ".l."
             + str(self.credentials["leagueId"])
             + "/players;player_keys="
-            + playerKey
+            + str(playerKey)
             + "/stats;type=biweekly"
         )
         playerData = self.queryYahooApi(rosterUrl, "player")
@@ -126,7 +149,10 @@ class YahooApi:
             player["available_positions"] == "G"
             or "G" in player["available_positions"]
         )
-
+        if player["isGoalie"]:
+            logging.debug(
+                f"Player: {playerData["fantasy_content"]["league"]["players"]["player"]}"
+            )
         points = 0
 
         for stat in playerData["fantasy_content"]["league"]["players"][
@@ -156,25 +182,5 @@ class YahooApi:
         nextGame = json.loads(response.content)
         # logging.info("Next game: %s" % nextGame)
         player["next_game"] = nextGame["games"][0]["gameDate"]
+
         return player
-
-    def getLeagueRequiredRoster(self):
-        """
-        Extracts the required roster positions from the league settings.
-        Returns a list of positions based on the league's roster configuration.
-        """
-        # Extract roster positions from the league settings
-        roster_positions = self.getLeagueSettings()["fantasy_content"][
-            "league"
-        ]["settings"]["roster_positions"]["roster_position"]
-
-        # Create a list to hold the full lineup based on the league settings
-        full_lineup = []
-
-        # Iterate over each position and add it to the full lineup list based on its count
-        for position in roster_positions:
-            position_name = position["position"]
-            count = int(position["count"])
-            full_lineup.extend([position_name] * count)
-
-        return full_lineup
