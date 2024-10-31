@@ -27,7 +27,7 @@ class YahooApi:
         self.oauth_file = os.path.join(directory_path, "tokens", "secrets.json")
         if not os.path.exists(self.oauth_file):
             logging.info("Token file does not exist, generating new token")
-            # self.oauth_json_gen()
+            self.oauth_json_gen()
         self.oauth_setup()
         # Initialize game, league and team objects
         self.logger.info("Initializing Yahoo Fantasy objects")
@@ -56,8 +56,12 @@ class YahooApi:
 
     def oauth_json_gen(self):
         try:
+            credentials = self.config.getCredentials()
+            credentials["token_time"] = datetime.datetime.now().timestamp()
+            credentials["token_type"] = "bearer"
+            credentials["guid"] = None
             with open(self.oauth_file, "w") as f:
-                f.write(json.dumps(self.credentials))
+                f.write(json.dumps(credentials))
         except Exception as e:
             logging.info(
                 f"No access token or refresh token found, need to authorize using 3legged OAuth: {e}"
@@ -67,31 +71,7 @@ class YahooApi:
     def oauth_setup(self):
         self.logger.info("Setting up OAuth")
         self.logger.info(f"credentials: {self.credentials}")
-
-        self.logger.info("Continuing OAuth2")
         self.logger.info(f"oauth_file: {self.oauth_file}")
-        self.logger.info(
-            f"Stored consumer_key: {self.credentials['consumer_key'][:5]}"
-        )
-        self.logger.info(
-            f"Stored consumer_secret: {self.credentials['consumer_secret'][:5]}"
-        )
-        try:
-            self.logger.info(
-                f"stored access_token  : {self.credentials['access_token'][:5]}"
-            )
-            self.logger.info(
-                f"stored refresh_token: {self.credentials['refresh_token'][:5]}"
-            )
-        except Exception as e:
-            pass
-
-        self.oauth_file = os.path.join(
-            self.directory_path, "tokens", "secrets.json"
-        )
-        if not os.path.exists(self.oauth_file):
-            logging.info("Token file does not exist, generating new token")
-            self.oauth_json_gen()
 
         with open(self.oauth_file, "r") as f:
             self.logger.info(f"oauth_file: {f.read()}")
