@@ -27,9 +27,9 @@ class Config:
 
         self.hasToken = False
         self.directory_path = directory_path
-        self.token_path = os.path.join(directory_path, "tokens/secrets.json")
+        self.token_path = os.path.join(directory_path, "tokens", "secrets.json")
         self.credentials_path = os.path.join(
-            directory_path, "tokens/credentials.json"
+            directory_path, "tokens", "credentials.json"
         )
         self._load_credentials()
 
@@ -50,17 +50,7 @@ class Config:
                 "Dumping credentials to file located at %s", self.token_path
             )
             self.logger.info("Directory path: %s", self.directory_path)
-            # with open(self.token_path, "w") as file:
 
-            #     json.dump(
-            #         {
-            #             "consumer_key": self.consumer_key,
-            #             "consumer_secret": self.consumer_secret,
-            #             "access_token": self.access_token,
-            #             "refresh_token": self.refresh_token,
-            #         },
-            #         file,
-            #     )
         except Exception as e:
             logging.error(
                 f"Error loading credentials from environment variables: {e}"

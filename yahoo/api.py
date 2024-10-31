@@ -23,7 +23,7 @@ class YahooApi:
         self.credentials = self.config.getCredentials()
 
         self.logger.info("Checking token")
-        self.oauth_file = os.path.join(directory_path, "tokens/secrets.json")
+        self.oauth_file = os.path.join(directory_path, "tokens", "secrets.json")
         if not os.path.exists(self.oauth_file):
             logging.info("Token file does not exist, generating new token")
             # self.oauth_json_gen()
@@ -75,13 +75,12 @@ class YahooApi:
 
     def oauth_setup(self):
         self.logger.info("Setting up OAuth")
+        self.logger.info(f"credentials: {self.credentials}")
 
-        with open(self.oauth_file, "w") as f:
-            json.dump(self.credentials, f)
-            # self.logger.info(f"consumer_key: {creds['consumer_key'][:5]}")
-            # self.logger.info(f"consumer_secret: {creds['consumer_secret'][:5]}")
-            # self.logger.info(f"access_token: {creds['access_token'][:5]}")
-            # self.logger.info(f"refresh_token: {creds['refresh_token'][:5]}")
+        # self.logger.info(f"consumer_key: {creds['consumer_key'][:5]}")
+        # self.logger.info(f"consumer_secret: {creds['consumer_secret'][:5]}")
+        # self.logger.info(f"access_token: {creds['access_token'][:5]}")
+        # self.logger.info(f"refresh_token: {creds['refresh_token'][:5]}")
         self.logger.info("Continuing OAuth2")
         self.logger.info(f"oauth_file: {self.oauth_file}")
         self.logger.info(
@@ -90,27 +89,31 @@ class YahooApi:
         self.logger.info(
             f"Stored consumer_secret: {self.credentials['consumer_secret'][:5]}"
         )
-        self.logger.info(
-            f"stored access_token  : {self.credentials['access_token'][:5]}"
-        )
-        self.logger.info(
-            f"stored refresh_token: {self.credentials['refresh_token'][:5]}"
-        )
+        try:
+            self.logger.info(
+                f"stored access_token  : {self.credentials['access_token'][:5]}"
+            )
+            self.logger.info(
+                f"stored refresh_token: {self.credentials['refresh_token'][:5]}"
+            )
+        except Exception as e:
+            self.logger.info(f"No access_token or refresh_token stored: {e}")
         self.sc = OAuth2(
-            self.credentials["consumer_key"],
-            self.credentials["consumer_secret"],
+            None,
+            None,
             from_file=self.oauth_file,
         )
         if not self.sc.token_is_valid():
             self.sc.refresh_access_token()
+        self.credentials["access_token"] = self.sc.access_token
+        self.credentials["refresh_token"] = self.sc.refresh_token
 
     def queryYahooApi(self, url, dataType):
         """
         Queries the yahoo fantasy sports api
         """
 
-        oauth = self.config.readOAuthToken()
-        header = "Bearer " + oauth["token"]
+        header = "Bearer " + self.credentials["access_token"]
         self.logger.debug("URL: %s" % url)
         response = requests.get(url, headers={"Authorization": header})
 
@@ -120,10 +123,10 @@ class YahooApi:
             payload = xmltodict.parse(response.content)
             self.logger.debug("Successfully parsed %s data" % dataType)
             return payload
-        elif response.status_code == 401:
-            self.logger.info("Token Expired....renewing")
-            oauth = self.config.refreshAccessToken(oauth["refreshToken"])
-            return self.queryYahooApi(url, dataType)
+        # elif response.status_code == 401:
+        #     self.logger.info("Token Expired....renewing")
+        #     oauth = self.config.refreshAccessToken(oauth["refreshToken"])
+        #     return self.queryYahooApi(url, dataType)
         else:
             self.logger.error("Could not get %s information" % dataType)
             self.logger.error("---------DEBUG--------")
