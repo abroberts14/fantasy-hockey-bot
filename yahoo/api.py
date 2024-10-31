@@ -18,6 +18,7 @@ class YahooApi:
             __name__
         )  # Get the root logger set in main.py
         self.config = Config(directory_path)
+        self.directory_path = directory_path
         self.logger.info("Initializing YahooApi")
         self.logger.info("Getting credentials")
         self.credentials = self.config.getCredentials()
@@ -54,33 +55,19 @@ class YahooApi:
             raise
 
     def oauth_json_gen(self):
-        if self.credentials["consumer_key"] is None:
-            raise RuntimeError("Must specify the <consumer_key> option")
-        if self.credentials["consumer_secret"] is None:
-            raise RuntimeError("Must specify the <consumer_secret> option")
-        creds = {}
-        creds["consumer_key"] = self.credentials["consumer_key"]
-        creds["consumer_secret"] = self.credentials["consumer_secret"]
         try:
-            creds["access_token"] = self.credentials["access_token"]
-            creds["refresh_token"] = self.credentials["refresh_token"]
+            with open(self.oauth_file, "w") as f:
+                f.write(json.dumps(self.credentials))
         except Exception as e:
             logging.info(
                 f"No access token or refresh token found, need to authorize using 3legged OAuth: {e}"
             )
             pass
-        print(creds["access_token"][:5])
-        with open(self.oauth_file, "w") as f:
-            f.write(json.dumps(creds))
 
     def oauth_setup(self):
         self.logger.info("Setting up OAuth")
         self.logger.info(f"credentials: {self.credentials}")
 
-        # self.logger.info(f"consumer_key: {creds['consumer_key'][:5]}")
-        # self.logger.info(f"consumer_secret: {creds['consumer_secret'][:5]}")
-        # self.logger.info(f"access_token: {creds['access_token'][:5]}")
-        # self.logger.info(f"refresh_token: {creds['refresh_token'][:5]}")
         self.logger.info("Continuing OAuth2")
         self.logger.info(f"oauth_file: {self.oauth_file}")
         self.logger.info(
@@ -97,7 +84,14 @@ class YahooApi:
                 f"stored refresh_token: {self.credentials['refresh_token'][:5]}"
             )
         except Exception as e:
-            self.logger.info(f"No access_token or refresh_token stored: {e}")
+            pass
+
+        self.oauth_file = os.path.join(
+            self.directory_path, "tokens", "secrets.json"
+        )
+        if not os.path.exists(self.oauth_file):
+            logging.info("Token file does not exist, generating new token")
+            self.oauth_json_gen()
         self.sc = OAuth2(
             None,
             None,
