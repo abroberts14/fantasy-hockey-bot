@@ -27,7 +27,9 @@ class Config:
 
         self.hasToken = False
         self.directory_path = directory_path
-        self.token_path = TOKEN_PATH
+        self.token_path = (
+            os.path.dirname(os.path.realpath(__file__)) + "/tokens/secrets.json"
+        )
         self._load_credentials()
 
     def _load_credentials(self):
