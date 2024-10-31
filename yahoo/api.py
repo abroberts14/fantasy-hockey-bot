@@ -74,11 +74,15 @@ class YahooApi:
             f.write(json.dumps(creds))
 
     def oauth_setup(self):
+        self.logger.info("Setting up OAuth")
+        with open(self.oauth_file, "r") as f:
+            creds = json.load(f)
+            self.logger.info(f"Loaded credentials: {creds['access_token'][:5]}")
+
         self.sc = OAuth2(
             self.credentials["consumer_key"],
             self.credentials["consumer_secret"],
-            self.credentials["access_token"],
-            self.credentials["refresh_token"],
+            from_file=self.oauth_file,
         )
         if not self.sc.token_is_valid():
             self.sc.refresh_access_token()
