@@ -99,10 +99,12 @@ class YahooApi:
             payload = xmltodict.parse(response.content)
             self.logger.debug("Successfully parsed %s data" % dataType)
             return payload
-        # elif response.status_code == 401:
-        #     self.logger.info("Token Expired....renewing")
-        #     oauth = self.config.refreshAccessToken(oauth["refreshToken"])
-        #     return self.queryYahooApi(url, dataType)
+        elif response.status_code == 401:
+            self.logger.info("Token Expired....renewing")
+            self.sc.refresh_access_token()
+            self.credentials["access_token"] = self.sc.access_token
+            self.credentials["refresh_token"] = self.sc.refresh_token
+            return self.queryYahooApi(url, dataType)
         else:
             self.logger.error("Could not get %s information" % dataType)
             self.logger.error("---------DEBUG--------")
