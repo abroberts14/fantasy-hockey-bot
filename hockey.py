@@ -89,12 +89,12 @@ class TeamManager:
 
     def _build_player_data(self, player):
         player_data = self.yApi.getPlayerData(
-            self.yApi.credentials["gameKey"] + ".p." + str(player["player_id"])
+            self.yApi.credentials["game_key"] + ".p." + str(player["player_id"])
         )
 
         player_data["current_position"] = player["selected_position"]
         player_data["key"] = (
-            self.yApi.credentials["gameKey"] + ".p." + str(player["player_id"])
+            self.yApi.credentials["game_key"] + ".p." + str(player["player_id"])
         )
         return player_data
 

@@ -30,9 +30,9 @@ class YahooApi:
         # Initialize game, league and team objects
         self.logger.info("Initializing Yahoo Fantasy objects")
         self.league_key = (
-            f"{self.credentials['gameKey']}.l.{self.credentials['leagueId']}"
+            f"{self.credentials['game_key']}.l.{self.credentials['league_id']}"
         )
-        self.team_key = f"{self.league_key}.t.{self.credentials['teamId']}"
+        self.team_key = f"{self.league_key}.t.{self.credentials['team_id']}"
         try:
             # Create game object for NHL
             self.game = yfa.Game(self.sc, "nhl")
@@ -53,16 +53,16 @@ class YahooApi:
             raise
 
     def oauth_json_gen(self):
-        if self.credentials["consumerKey"] is None:
+        if self.credentials["consumer_key"] is None:
             raise RuntimeError("Must specify the <consumer_key> option")
-        if self.credentials["consumerSecret"] is None:
+        if self.credentials["consumer_secret"] is None:
             raise RuntimeError("Must specify the <consumer_secret> option")
         creds = {}
-        creds["consumer_key"] = self.credentials["consumerKey"]
-        creds["consumer_secret"] = self.credentials["consumerSecret"]
+        creds["consumer_key"] = self.credentials["consumer_key"]
+        creds["consumer_secret"] = self.credentials["consumer_secret"]
         try:
-            creds["access_token"] = self.credentials["accessToken"]
-            creds["refresh_token"] = self.credentials["refreshToken"]
+            creds["access_token"] = self.credentials["access_token"]
+            creds["refresh_token"] = self.credentials["refresh_token"]
         except Exception as e:
             logging.info(
                 f"No access token or refresh token found, need to authorize using 3legged OAuth: {e}"
@@ -124,9 +124,9 @@ class YahooApi:
         rosterUrl = (
             BASE_YAHOO_API_URL
             + "league/"
-            + str(self.credentials["gameKey"])
+            + str(self.credentials["game_key"])
             + ".l."
-            + str(self.credentials["leagueId"])
+            + str(self.credentials["league_id"])
             + "/players;player_keys="
             + str(playerKey)
             + "/stats;type=biweekly"

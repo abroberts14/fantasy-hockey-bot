@@ -27,13 +27,10 @@ class Config:
 
         self.hasToken = False
         self.directory_path = directory_path
-        self.token_path = os.path.join(directory_path, "tokenData.conf")
+        self.token_path = TOKEN_PATH
         self._load_credentials()
 
     def _load_credentials(self):
-        credentials_path = os.path.join(self.directory_path, "credentials.json")
-        logging.info(f"Credentials path: {credentials_path}")
-
         try:
             self.consumerKey = os.environ["CONSUMER_KEY"]
             self.consumerSecret = os.environ["CONSUMER_SECRET"]
@@ -46,136 +43,37 @@ class Config:
             self.logger.info(f"Team ID: {self.teamId}")
             self.logger.info(f"League ID: {self.leagueId}")
             self.logger.info(f"Game Key: {self.gameKey}")
+            with open(self.token_path, "w") as file:
+                json.dump(
+                    {
+                        "consumer_key": self.consumerKey,
+                        "consumer_secret": self.consumerSecret,
+                        "access_token": self.accessToken,
+                        "refresh_token": self.refreshToken,
+                    },
+                    file,
+                )
         except Exception as e:
             logging.error(
                 f"Error loading credentials from environment variables: {e}"
             )
-            with open(credentials_path, "r") as file:
+            with open(self.token_path, "r") as file:
                 credentials = json.load(file)
 
-            self.consumerKey = credentials["CONSUMER_KEY"]
-            self.consumerSecret = credentials["CONSUMER_SECRET"]
-            self.gameKey = credentials["GAME_KEY"]
-            self.leagueId = credentials["LEAGUE_ID"]
-            self.teamId = credentials["TEAM_ID"]
-
-    def readOAuthToken(self):
-        """
-        Reads the token data from file and returns a dictionary object
-        """
-
-        logging.debug("Reading token details from file...")
-
-        try:
-            tokenFile = open(self.token_path, "r")
-            oauth = json.load(tokenFile)
-            tokenFile.close()
-        except Exception as e:
-            raise e
-
-        logging.debug("Reading complete!")
-        return oauth
-
-    def getAccessToken(self, verifier):
-        """
-        Gets the access token used to allow access to user data within Yahoo APIs
-
-        Returns access token payload
-        """
-
-        logging.info("Getting access token...")
-
-        response = requests.post(
-            REQUEST_TOKEN_URL,
-            data={
-                "client_id": self.consumerKey,
-                "client_secret": self.consumerSecret,
-                "redirect_uri": "oob",
-                "code": verifier,
-                "grant_type": "authorization_code",
-            },
-        )
-
-        if response.status_code == 200:
-            logging.info("Success!")
-            logging.debug(response.content)
-            return response.content
-        else:
-            logging.error("Access Token Request returned a non 200 code")
-            logging.error("---------DEBUG--------")
-            logging.error("HTTP Code: %s" % response.status_code)
-            logging.error("HTTP Response: \n%s" % response.content)
-            logging.error("-------END DEBUG------")
-            sys.exit(1)
-
-    def refreshAccessToken(self, refreshToken):
-        """
-        Refreshes the access token as it expires every hour
-
-        Returns access token payload
-        """
-
-        logging.info("Refreshing access token...")
-
-        response = requests.post(
-            REQUEST_TOKEN_URL,
-            data={
-                "client_id": self.consumerKey,
-                "client_secret": self.consumerSecret,
-                "redirect_uri": "oob",
-                "refresh_token": refreshToken,
-                "grant_type": "refresh_token",
-            },
-        )
-
-        if response.status_code == 200:
-            logging.info("Success!")
-            logging.debug(response.content)
-            oauth = self.parseToken(response.content)
-            return oauth
-        else:
-            logging.error("Access Token Request returned a non 200 code")
-            logging.error("---------DEBUG--------")
-            logging.error("HTTP Code: %s" % response.status_code)
-            logging.error("HTTP Response: \n%s" % response.content)
-            logging.error("-------END DEBUG------")
-            sys.exit(1)
-
-    def parseToken(self, response):
-        """
-        Receives the token payload and breaks it up into a dictionary and saves it to tokenData.conf
-
-        Returns a dictionary to be used for API calls
-        """
-
-        parsedResponse = json.loads(response)
-        accessToken = parsedResponse["access_token"]
-        refreshToken = parsedResponse["refresh_token"]
-
-        oauth = {}
-
-        oauth["token"] = accessToken
-        oauth["refreshToken"] = refreshToken
-
-        try:
-            tokenFile = open(self.token_path, "w")
-            json.dump(oauth, tokenFile)
-            tokenFile.close()
-
-            return oauth
-
-        except Exception as e:
-            raise e
+            self.consumerKey = credentials["consumer_key"]
+            self.consumerSecret = credentials["consumer_secret"]
+            self.gameKey = credentials["game_key"]
+            self.leagueId = credentials["league_id"]
+            self.teamId = credentials["team_id"]
 
     def getCredentials(self):
         res = {
-            "accessToken": self.accessToken,
-            "refreshToken": self.refreshToken,
-            "consumerKey": self.consumerKey,
-            "consumerSecret": self.consumerSecret,
-            "gameKey": self.gameKey,
-            "leagueId": self.leagueId,
-            "teamId": self.teamId,
-            "hasToken": self.hasToken,
+            "access_token": self.accessToken,
+            "refresh_token": self.refreshToken,
+            "consumer_key": self.consumerKey,
+            "consumer_ecret": self.consumerSecret,
+            "game_key": self.gameKey,
+            "league_id": self.leagueId,
+            "team_id": self.teamId,
         }
         return res
