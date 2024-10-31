@@ -37,6 +37,10 @@ class YahooApi:
         self.team_key = f"{self.league_key}.t.{self.credentials['team_id']}"
         try:
             # Create game object for NHL
+            self.sc.refresh_access_token()
+            self.credentials["access_token"] = self.sc.access_token
+            self.credentials["refresh_token"] = self.sc.refresh_token
+            self.logger.info(f"isToken Valid: {self.sc.token_is_valid()}")
             self.game = yfa.Game(self.sc, "nhl")
 
             # Create league object using credentials
@@ -81,6 +85,7 @@ class YahooApi:
             from_file=self.oauth_file,
         )
         self.sc.refresh_access_token()
+
         self.credentials["access_token"] = self.sc.access_token
         self.credentials["refresh_token"] = self.sc.refresh_token
 
