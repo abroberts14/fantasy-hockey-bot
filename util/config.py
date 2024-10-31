@@ -17,18 +17,20 @@ class Config:
         )  # G det the root logger set in main.py
 
         self.logger.info("Initializing Config")
-        self.consumerKey = None
-        self.consumerSecret = None
-        self.accessToken = None
-        self.refreshToken = None
-        self.gameKey = None
-        self.leagueId = None
-        self.teamId = None
+        self.consumer_key = None
+        self.consumer_secret = None
+        self.access_token = None
+        self.refresh_token = None
+        self.game_key = None
+        self.league_id = None
+        self.team_id = None
 
         self.hasToken = False
         self.directory_path = directory_path
         self.token_path = os.path.join(directory_path, "tokens/secrets.json")
-
+        self.credentials_path = os.path.join(
+            directory_path, "tokens/credentials.json"
+        )
         self._load_credentials()
 
     def _load_credentials(self):
@@ -63,7 +65,7 @@ class Config:
             logging.error(
                 f"Error loading credentials from environment variables: {e}"
             )
-            with open(self.token_path, "r") as file:
+            with open(self.credentials_path, "r") as file:
                 credentials = json.load(file)
 
             self.consumer_key = credentials["consumer_key"]
@@ -74,12 +76,14 @@ class Config:
 
     def getCredentials(self):
         res = {
-            "access_token": self.access_token,
-            "refresh_token": self.refresh_token,
             "consumer_key": self.consumer_key,
             "consumer_secret": self.consumer_secret,
             "game_key": self.game_key,
             "league_id": self.league_id,
             "team_id": self.team_id,
         }
+        if self.access_token:
+            res["access_token"] = self.access_token
+        if self.refresh_token:
+            res["refresh_token"] = self.refresh_token
         return res
