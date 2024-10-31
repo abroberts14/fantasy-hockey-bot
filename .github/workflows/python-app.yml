@@ -19,6 +19,8 @@ env:
   LEAGUE_ID: ${{ vars.LEAGUE_ID }}
   TEAM_ID: ${{ vars.TEAM_ID }}
   YAHOO_TOKEN: ${{ secrets.YAHOO_TOKEN }}
+  ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+  REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
 
 jobs:
   build:
