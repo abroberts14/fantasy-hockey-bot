@@ -169,6 +169,8 @@ class Config:
 
     def getCredentials(self):
         res = {
+            "accessToken": self.accessToken,
+            "refreshToken": self.refreshToken,
             "consumerKey": self.consumerKey,
             "consumerSecret": self.consumerSecret,
             "gameKey": self.gameKey,
