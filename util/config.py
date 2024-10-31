@@ -48,16 +48,17 @@ class Config:
                 "Dumping credentials to file located at %s", self.token_path
             )
             self.logger.info("Directory path: %s", self.directory_path)
-            with open(self.token_path, "w") as file:
-                json.dump(
-                    {
-                        "consumer_key": self.consumer_key,
-                        "consumer_secret": self.consumer_secret,
-                        "access_token": self.access_token,
-                        "refresh_token": self.refresh_token,
-                    },
-                    file,
-                )
+            # with open(self.token_path, "w") as file:
+
+            #     json.dump(
+            #         {
+            #             "consumer_key": self.consumer_key,
+            #             "consumer_secret": self.consumer_secret,
+            #             "access_token": self.access_token,
+            #             "refresh_token": self.refresh_token,
+            #         },
+            #         file,
+            #     )
         except Exception as e:
             logging.error(
                 f"Error loading credentials from environment variables: {e}"

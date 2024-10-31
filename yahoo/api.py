@@ -75,12 +75,20 @@ class YahooApi:
 
     def oauth_setup(self):
         self.logger.info("Setting up OAuth")
-        with open(self.oauth_file, "r") as f:
-            creds = json.load(f)
-            self.logger.info(f"consumer_key: {creds['consumer_key'][:5]}")
-            self.logger.info(f"consumer_secret: {creds['consumer_secret'][:5]}")
-            self.logger.info(f"access_token: {creds['access_token'][:5]}")
-            self.logger.info(f"refresh_token: {creds['refresh_token'][:5]}")
+        oauth = OAuth2(
+            self.credentials["consumer_key"],
+            self.credentials["consumer_secret"],
+        )
+
+        guid = oauth.guid
+        self.credentials["guid"] = guid
+        self.logger.info(f"guid: {guid}")
+        with open(self.oauth_file, "w") as f:
+            json.dump(self.credentials, f)
+            # self.logger.info(f"consumer_key: {creds['consumer_key'][:5]}")
+            # self.logger.info(f"consumer_secret: {creds['consumer_secret'][:5]}")
+            # self.logger.info(f"access_token: {creds['access_token'][:5]}")
+            # self.logger.info(f"refresh_token: {creds['refresh_token'][:5]}")
         self.logger.info("Setting up OAuth2")
         self.logger.info(f"oauth_file: {self.oauth_file}")
         self.logger.info(
