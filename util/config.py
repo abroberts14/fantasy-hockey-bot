@@ -44,6 +44,10 @@ class Config:
             self.logger.info(f"Team ID: {self.teamId}")
             self.logger.info(f"League ID: {self.leagueId}")
             self.logger.info(f"Game Key: {self.gameKey}")
+            self.logger.info(
+                "Dumping credentials to file located at %s", self.token_path
+            )
+            self.logger.info("Directory path: %s", self.directory_path)
             with open(self.token_path, "w") as file:
                 json.dump(
                     {
