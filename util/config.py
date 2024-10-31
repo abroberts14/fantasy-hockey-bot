@@ -33,13 +33,13 @@ class Config:
 
     def _load_credentials(self):
         try:
-            self.consumerKey = os.environ["CONSUMER_KEY"]
-            self.consumerSecret = os.environ["CONSUMER_SECRET"]
-            self.gameKey = os.environ["GAME_KEY"]
-            self.leagueId = os.environ["LEAGUE_ID"]
-            self.teamId = os.environ["TEAM_ID"]
-            self.accessToken = os.environ["ACCESS_TOKEN"]
-            self.refreshToken = os.environ["REFRESH_TOKEN"]
+            self.consumer_key = os.environ["CONSUMER_KEY"]
+            self.consumer_secret = os.environ["CONSUMER_SECRET"]
+            self.game_key = os.environ["GAME_KEY"]
+            self.league_id = os.environ["LEAGUE_ID"]
+            self.team_id = os.environ["TEAM_ID"]
+            self.access_token = os.environ["ACCESS_TOKEN"]
+            self.refresh_token = os.environ["REFRESH_TOKEN"]
             self.logger.info("Loaded credentials from environment variables")
             self.logger.info(f"Team ID: {self.teamId}")
             self.logger.info(f"League ID: {self.leagueId}")
@@ -61,20 +61,20 @@ class Config:
             with open(self.token_path, "r") as file:
                 credentials = json.load(file)
 
-            self.consumerKey = credentials["consumer_key"]
-            self.consumerSecret = credentials["consumer_secret"]
-            self.gameKey = credentials["game_key"]
-            self.leagueId = credentials["league_id"]
-            self.teamId = credentials["team_id"]
+            self.consumer_key = credentials["consumer_key"]
+            self.consumer_secret = credentials["consumer_secret"]
+            self.game_key = credentials["game_key"]
+            self.league_id = credentials["league_id"]
+            self.team_id = credentials["team_id"]
 
     def getCredentials(self):
         res = {
-            "access_token": self.accessToken,
-            "refresh_token": self.refreshToken,
-            "consumer_key": self.consumerKey,
-            "consumer_ecret": self.consumerSecret,
-            "game_key": self.gameKey,
-            "league_id": self.leagueId,
-            "team_id": self.teamId,
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+            "consumer_key": self.consumer_key,
+            "consumer_secret": self.consumer_secret,
+            "game_key": self.game_key,
+            "league_id": self.league_id,
+            "team_id": self.team_id,
         }
         return res
