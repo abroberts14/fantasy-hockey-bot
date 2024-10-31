@@ -41,9 +41,9 @@ class Config:
             self.access_token = os.environ["ACCESS_TOKEN"]
             self.refresh_token = os.environ["REFRESH_TOKEN"]
             self.logger.info("Loaded credentials from environment variables")
-            self.logger.info(f"Team ID: {self.teamId}")
-            self.logger.info(f"League ID: {self.leagueId}")
-            self.logger.info(f"Game Key: {self.gameKey}")
+            self.logger.info(f"Team ID: {self.team_id}")
+            self.logger.info(f"League ID: {self.league_id}")
+            self.logger.info(f"Game Key: {self.game_key}")
             self.logger.info(
                 "Dumping credentials to file located at %s", self.token_path
             )
@@ -51,10 +51,10 @@ class Config:
             with open(self.token_path, "w") as file:
                 json.dump(
                     {
-                        "consumer_key": self.consumerKey,
-                        "consumer_secret": self.consumerSecret,
-                        "access_token": self.accessToken,
-                        "refresh_token": self.refreshToken,
+                        "consumer_key": self.consumer_key,
+                        "consumer_secret": self.consumer_secret,
+                        "access_token": self.access_token,
+                        "refresh_token": self.refresh_token,
                     },
                     file,
                 )
