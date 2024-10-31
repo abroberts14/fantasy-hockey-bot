@@ -80,8 +80,7 @@ class YahooApi:
             None,
             from_file=self.oauth_file,
         )
-        if not self.sc.token_is_valid():
-            self.sc.refresh_access_token()
+        self.sc.refresh_access_token()
         self.credentials["access_token"] = self.sc.access_token
         self.credentials["refresh_token"] = self.sc.refresh_token
 
