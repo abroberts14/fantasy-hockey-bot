@@ -33,16 +33,8 @@ class Config:
     def _load_credentials(self):
         credentials_path = os.path.join(self.directory_path, "credentials.json")
         logging.info(f"Credentials path: {credentials_path}")
-        if os.path.exists(credentials_path):
-            with open(credentials_path, "r") as file:
-                credentials = json.load(file)
 
-            self.consumerKey = credentials["CONSUMER_KEY"]
-            self.consumerSecret = credentials["CONSUMER_SECRET"]
-            self.gameKey = credentials["GAME_KEY"]
-            self.leagueId = credentials["LEAGUE_ID"]
-            self.teamId = credentials["TEAM_ID"]
-        else:
+        try:
             self.consumerKey = os.environ["CONSUMER_KEY"]
             self.consumerSecret = os.environ["CONSUMER_SECRET"]
             self.gameKey = os.environ["GAME_KEY"]
@@ -54,66 +46,18 @@ class Config:
             self.logger.info(f"Team ID: {self.teamId}")
             self.logger.info(f"League ID: {self.leagueId}")
             self.logger.info(f"Game Key: {self.gameKey}")
-        if "YAHOO_TOKEN" in os.environ:
-            try:
-                oauth = json.loads(os.environ["YAHOO_TOKEN"])
-                tokenFile = open(self.token_path, "w")
-                json.dump(oauth, tokenFile)
-                tokenFile.close()
-
-            except Exception as e:
-                raise e
-            self.hasToken = True
-
-            # Check to see if the token data file is present
-        try:
-            self.logger.info("Token Path: %s" % self.token_path)
-            open(self.token_path, "r")
-            self.hasToken = True
-        except IOError as e:
-            if "No such file or directory" in e.strerror:
-                self.hasToken = False
-            else:
-                logging.error("IO ERROR: [%d] %s" % (e.errno, e.strerror))
-                sys.exit(1)
         except Exception as e:
-            logging.error("ERROR: [%d] %s" % (e.errno, e.strerror))
-            sys.exit(1)
+            logging.error(
+                f"Error loading credentials from environment variables: {e}"
+            )
+            with open(credentials_path, "r") as file:
+                credentials = json.load(file)
 
-        if not self.hasToken:
-            self.logger.info("No token found, getting full authorization")
-            oauth = self.getFullAuthorization()
-
-    def getFullAuthorization(self):
-        """
-        Gets full authorization for the application to access Yahoo APIs and get User Data.
-
-        Writes all relevant data to tokenData.conf
-        """
-
-        # Step 1: Get authorization from User to access their data
-        authUrl = "%s?client_id=%s&redirect_uri=oob&response_type=code" % (
-            REQUEST_AUTH_URL,
-            self.consumerKey,
-        )
-        logging.debug(authUrl)
-        print(
-            "You need to authorize this application to access your data.\nPlease go to %s"
-            % (authUrl)
-        )
-        authorized = "n"
-
-        while authorized.lower() != "y":
-            authorized = input("Have you authorized me? (y/n)")
-            if authorized.lower() != "y":
-                print("You need to authorize me to continue...")
-
-        authCode = input("What is the code? ")
-
-        # Step 2: Get Access Token to send requests to Yahoo APIs
-        response = self.getAccessToken(authCode)
-        oauth = self.parseToken(response)
-        return oauth
+            self.consumerKey = credentials["CONSUMER_KEY"]
+            self.consumerSecret = credentials["CONSUMER_SECRET"]
+            self.gameKey = credentials["GAME_KEY"]
+            self.leagueId = credentials["LEAGUE_ID"]
+            self.teamId = credentials["TEAM_ID"]
 
     def readOAuthToken(self):
         """

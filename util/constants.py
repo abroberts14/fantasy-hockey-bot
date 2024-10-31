@@ -7,7 +7,7 @@ REQUEST_TOKEN_URL = "https://api.login.yahoo.com/oauth2/get_token"
 BASE_YAHOO_API_URL = "https://fantasysports.yahooapis.com/fantasy/v2/"
 NEXT_GAME_URL = "https://api-web.nhle.com/v1/club-schedule/%s/week/now"
 DIRECTORY_PATH = os.path.dirname(os.path.realpath(__file__))
-TOKEN_PATH = DIRECTORY_PATH + "/tokenData.conf"
+TOKEN_PATH = DIRECTORY_PATH + "/tokens/secrets.json"
 
 NHL_TEAM_ID = {
     "New Jersey Devils": "NJD",
