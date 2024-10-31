@@ -25,7 +25,8 @@ class YahooApi:
         self.logger.info("Checking token")
         self.oauth_file = os.path.join(directory_path, "tokens/secrets.json")
         if not os.path.exists(self.oauth_file):
-            self.oauth_json_gen()
+            logging.info("Token file does not exist, generating new token")
+            # self.oauth_json_gen()
         self.oauth_setup()
         # Initialize game, league and team objects
         self.logger.info("Initializing Yahoo Fantasy objects")
@@ -68,11 +69,17 @@ class YahooApi:
                 f"No access token or refresh token found, need to authorize using 3legged OAuth: {e}"
             )
             pass
+        print(creds["access_token"][:5])
         with open(self.oauth_file, "w") as f:
             f.write(json.dumps(creds))
 
     def oauth_setup(self):
-        self.sc = OAuth2(None, None, from_file=self.oauth_file)
+        self.sc = OAuth2(
+            self.credentials["consumer_key"],
+            self.credentials["consumer_secret"],
+            self.credentials["access_token"],
+            self.credentials["refresh_token"],
+        )
         if not self.sc.token_is_valid():
             self.sc.refresh_access_token()
 
