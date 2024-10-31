@@ -19,6 +19,8 @@ class Config:
         self.logger.info("Initializing Config")
         self.consumerKey = None
         self.consumerSecret = None
+        self.accessToken = None
+        self.refreshToken = None
         self.gameKey = None
         self.leagueId = None
         self.teamId = None
@@ -46,6 +48,8 @@ class Config:
             self.gameKey = os.environ["GAME_KEY"]
             self.leagueId = os.environ["LEAGUE_ID"]
             self.teamId = os.environ["TEAM_ID"]
+            self.accessToken = os.environ["ACCESS_TOKEN"]
+            self.refreshToken = os.environ["REFRESH_TOKEN"]
             self.logger.info("Loaded credentials from environment variables")
             self.logger.info(f"Team ID: {self.teamId}")
             self.logger.info(f"League ID: {self.leagueId}")

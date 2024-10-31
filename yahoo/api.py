@@ -60,6 +60,14 @@ class YahooApi:
         creds = {}
         creds["consumer_key"] = self.credentials["consumerKey"]
         creds["consumer_secret"] = self.credentials["consumerSecret"]
+        try:
+            creds["access_token"] = self.credentials["accessToken"]
+            creds["refresh_token"] = self.credentials["refreshToken"]
+        except Exception as e:
+            logging.info(
+                f"No access token or refresh token found, need to authorize using 3legged OAuth: {e}"
+            )
+            pass
         with open(self.oauth_file, "w") as f:
             f.write(json.dumps(creds))
 
