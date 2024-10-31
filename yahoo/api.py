@@ -92,6 +92,9 @@ class YahooApi:
         if not os.path.exists(self.oauth_file):
             logging.info("Token file does not exist, generating new token")
             self.oauth_json_gen()
+
+        with open(self.oauth_file, "r") as f:
+            self.logger.info(f"oauth_file: {f.read()}")
         self.sc = OAuth2(
             None,
             None,
