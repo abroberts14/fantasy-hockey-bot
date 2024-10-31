@@ -61,7 +61,6 @@ class YahooApi:
     def oauth_json_gen(self):
         try:
             credentials = self.config.getCredentials()
-            credentials["token_time"] = datetime.datetime.now().timestamp()
             credentials["token_type"] = "bearer"
             credentials["guid"] = None
             with open(self.oauth_file, "w") as f:
