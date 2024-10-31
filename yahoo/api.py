@@ -62,6 +62,7 @@ class YahooApi:
         try:
             credentials = self.config.getCredentials()
             credentials["token_type"] = "bearer"
+            credentials["token_time"] = 1699999999
             credentials["guid"] = None
             with open(self.oauth_file, "w") as f:
                 f.write(json.dumps(credentials))
