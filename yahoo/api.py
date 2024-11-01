@@ -14,9 +14,7 @@ import yahoo_fantasy_api as yfa
 
 class YahooApi:
     def __init__(self, directory_path):
-        self.logger = logging.getLogger(
-            __name__
-        )  # Get the root logger set in main.py
+        self.logger = logging.getLogger(__name__)  # Get the root logger set in main.py
         self.config = Config(directory_path)
         self.directory_path = directory_path
         self.logger.info("Initializing YahooApi")
@@ -31,9 +29,7 @@ class YahooApi:
         self.oauth_setup()
         # Initialize game, league and team objects
         self.logger.info("Initializing Yahoo Fantasy objects")
-        self.league_key = (
-            f"{self.credentials['game_key']}.l.{self.credentials['league_id']}"
-        )
+        self.league_key = f"{self.credentials['game_key']}.l.{self.credentials['league_id']}"
         self.team_key = f"{self.league_key}.t.{self.credentials['team_id']}"
         try:
             # Create game object for NHL
@@ -53,9 +49,7 @@ class YahooApi:
             self.team_data = self.league.teams()[self.team_key]
             self.logger.info("Successfully initialized Yahoo Fantasy objects")
         except Exception as e:
-            self.logger.error(
-                f"Failed to initialize Yahoo Fantasy objects: {str(e)}"
-            )
+            self.logger.error(f"Failed to initialize Yahoo Fantasy objects: {str(e)}")
             raise
 
     def oauth_json_gen(self):
@@ -67,24 +61,20 @@ class YahooApi:
             with open(self.oauth_file, "w") as f:
                 f.write(json.dumps(credentials))
         except Exception as e:
-            logging.info(
-                f"No access token or refresh token found, need to authorize using 3legged OAuth: {e}"
-            )
+            logging.info(f"No access token or refresh token found, need to authorize using 3legged OAuth: {e}")
             pass
 
     def oauth_setup(self):
         self.logger.info("Setting up OAuth")
-        self.logger.info(f"credentials: {self.credentials}")
         self.logger.info(f"oauth_file: {self.oauth_file}")
 
-        with open(self.oauth_file, "r") as f:
-            self.logger.info(f"oauth_file: {f.read()}")
         self.sc = OAuth2(
             None,
             None,
             from_file=self.oauth_file,
         )
-        self.sc.refresh_access_token()
+        if not self.sc.token_is_valid():
+            self.sc.refresh_access_token()
 
         self.credentials["access_token"] = self.sc.access_token
         self.credentials["refresh_token"] = self.sc.refresh_token
@@ -147,44 +137,22 @@ class YahooApi:
         )
         playerData = self.queryYahooApi(rosterUrl, "player")
         player = {}
-        player["name"] = playerData["fantasy_content"]["league"]["players"][
-            "player"
-        ]["name"]["full"]
-        player["team"] = playerData["fantasy_content"]["league"]["players"][
-            "player"
-        ]["editorial_team_full_name"]
-        player["available_positions"] = playerData["fantasy_content"]["league"][
-            "players"
-        ]["player"]["eligible_positions"]["position"]
-        if (
-            "player_notes_last_timestamp"
-            in playerData["fantasy_content"]["league"]["players"]["player"]
-        ):
-            player["new_notes_timestamp"] = int(
-                playerData["fantasy_content"]["league"]["players"]["player"][
-                    "player_notes_last_timestamp"
-                ]
-            )
+        player["name"] = playerData["fantasy_content"]["league"]["players"]["player"]["name"]["full"]
+        player["team"] = playerData["fantasy_content"]["league"]["players"]["player"]["editorial_team_full_name"]
+        player["available_positions"] = playerData["fantasy_content"]["league"]["players"]["player"]["eligible_positions"]["position"]
+        if "player_notes_last_timestamp" in playerData["fantasy_content"]["league"]["players"]["player"]:
+            player["new_notes_timestamp"] = int(playerData["fantasy_content"]["league"]["players"]["player"]["player_notes_last_timestamp"])
         else:
             player["new_notes_timestamp"] = "-1"
-        player["isGoalie"] = (
-            player["available_positions"] == "G"
-            or "G" in player["available_positions"]
-        )
+        player["isGoalie"] = player["available_positions"] == "G" or "G" in player["available_positions"]
         if player["isGoalie"]:
-            logging.debug(
-                f"Player: {playerData["fantasy_content"]["league"]["players"]["player"]}"
-            )
+            logging.debug(f"Player: {playerData["fantasy_content"]["league"]["players"]["player"]}")
         points = 0
-
-        for stat in playerData["fantasy_content"]["league"]["players"][
-            "player"
-        ]["player_stats"]["stats"]["stat"]:
+        player["status"] = playerData["fantasy_content"]["league"]["players"]["player"].get("status", "")
+        for stat in playerData["fantasy_content"]["league"]["players"]["player"]["player_stats"]["stats"]["stat"]:
             if stat["value"] == "-":
                 points += 0
-            elif (
-                stat["stat_id"] == "22"
-            ):  # Goals Against counts against overall score
+            elif stat["stat_id"] == "22":  # Goals Against counts against overall score
                 points -= int(stat["value"])
             elif stat["stat_id"] == "23":  # GAA counts against overall score
                 points -= float(stat["value"])
