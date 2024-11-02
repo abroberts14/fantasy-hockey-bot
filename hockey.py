@@ -248,6 +248,9 @@ class TeamManager:
             while filled_count < required_count["count"] and available_players:
                 next_player = available_players.pop(0)
                 if next_player["key"] not in used_player_keys:
+                    logging.debug(f"Adding {next_player['name']} to {position}")
+                    if position not in calculated_lineup:
+                        calculated_lineup[position] = []
                     calculated_lineup[position].append(next_player)
                     used_player_keys.add(next_player["key"])
                     filled_count += 1
@@ -278,7 +281,7 @@ class TeamManager:
 
         if not self.dry_run:
             # self.yApi.roster_payload_manager.fill_roster(calculated_lineup)
-            logging.info(f"Payload: {new_lineup_payload}")
+            logging.debug(f"Payload: {new_lineup_payload}")
             if len(new_lineup_payload) > 0 and new_lineup_payload != original_lineup_payload:
                 self.yApi.team.change_positions(datetime.datetime.now(), new_lineup_payload)
                 self.roster = self.get_team()
