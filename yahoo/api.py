@@ -45,7 +45,9 @@ class YahooApi:
             self.league_settings = self.league.settings()
             self.max_moves = self.league_settings["max_weekly_adds"]
             self.team = self.league.to_team(self.team_key)
-
+            self.league_categories = self.league.stat_categories()
+            self.skater_categories = [cat["display_name"] for cat in self.league_categories if cat["position_type"] == "P"]
+            self.goalie_categories = [cat["display_name"] for cat in self.league_categories if cat["position_type"] == "G"]
             self.team_data = self.league.teams()[self.team_key]
             self.logger.info("Successfully initialized Yahoo Fantasy objects")
         except Exception as e:
