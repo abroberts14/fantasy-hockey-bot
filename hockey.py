@@ -118,14 +118,16 @@ class TeamManager:
         self.moves_left = int(self.yApi.max_moves) - int(self.yApi.team_data["roster_adds"]["value"])
         logging.info(f"Moves left: {self.moves_left}")
         logging.info(f"Roster full: {self.is_roster_full()}")
-        with open(os.path.join(self.stats_dir, f"{self.today}_team.json"), "w") as f:
-            json.dump(self.roster, f)
-        with open(os.path.join(self.stats_dir, f"{self.today}_lineup.json"), "w") as f:
-            json.dump(self.lineup, f)
-        with open(os.path.join(self.stats_dir, f"{self.today}_active_players.json"), "w") as f:
-            json.dump(self.active_players, f)
-        with open(os.path.join(self.stats_dir, f"{self.today}_moves_left.json"), "w") as f:
-            json.dump(self.moves_left, f)
+
+        if self.cache:
+            with open(os.path.join(self.stats_dir, f"{self.today}_team.json"), "w") as f:
+                json.dump(self.roster, f)
+            with open(os.path.join(self.stats_dir, f"{self.today}_lineup.json"), "w") as f:
+                json.dump(self.lineup, f)
+            with open(os.path.join(self.stats_dir, f"{self.today}_active_players.json"), "w") as f:
+                json.dump(self.active_players, f)
+            with open(os.path.join(self.stats_dir, f"{self.today}_moves_left.json"), "w") as f:
+                json.dump(self.moves_left, f)
         return team
 
     def is_roster_full(self):
