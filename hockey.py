@@ -8,6 +8,7 @@ import os
 import json
 import math
 import yahoo.api as api
+import argparse
 from util.parse import FantasyHockeyProjectionScraper
 
 logging.basicConfig(
@@ -1201,6 +1202,17 @@ class TeamManager:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--free-agents", dest="free_agents", action="store_true", help="Indicates to search for roster upgrades")
+    args = parser.parse_args()
+    look_for_free_agents = args.free_agents
+    if look_for_free_agents:
+        # Morning-specific logic here
+        logging.info("Looking for free agents")
+    else:
+        # Regular logic here
+        pass
+
     yApi = api.YahooApi(os.path.dirname(os.path.realpath(__file__)))
     manager = TeamManager(yApi, dry_run=False, cache=False)
     transactions = []
@@ -1235,26 +1247,27 @@ if __name__ == "__main__":
     else:
         logging.info("Roster is full, no need to add any players")
 
-    logging.info("--------------------------------")
-
     # Resync roster to latest
     team = manager.get_roster()
 
-    free_agents = manager.find_best_free_agents()
-    logging.info(f"Potential free agents length: {len(free_agents['lastweek'])}")
-    possible_adds, close_replacements = manager.compare_roster_to_free_agents(free_agents)
-    for i in possible_adds:
-        logging.info(f"{i['add']} - {i['drop']} - {i['improvement']:.2f} points")
+    if look_for_free_agents:
+        logging.info("--------------------------------")
 
-        # manager.perform_free_agent_add_drop(i["add"], i["drop"])
-        transactions.append(f"Added {i['add']} and dropped {i['drop']}")
+        free_agents = manager.find_best_free_agents()
+        logging.info(f"Potential free agents length: {len(free_agents['lastweek'])}")
+        possible_adds, close_replacements = manager.compare_roster_to_free_agents(free_agents)
+        for i in possible_adds:
+            logging.info(f"{i['add']} - {i['drop']} - {i['improvement']:.2f} points")
+
+            # manager.perform_free_agent_add_drop(i["add"], i["drop"])
+            transactions.append(f"Added {i['add']} and dropped {i['drop']}")
         team = manager.get_roster()
 
-    if len(possible_adds) > 0:
-        players_by_position = manager.get_players_by_position(team)
-        new_swaps = manager.set_best_lineup(players_by_position)
-        changes = manager.get_lineup_changes()
-        transactions.extend(changes)
+        if len(possible_adds) > 0:
+            players_by_position = manager.get_players_by_position(team)
+            new_swaps = manager.set_best_lineup(players_by_position)
+            changes = manager.get_lineup_changes()
+            transactions.extend(changes)
 
     logging.info("--------------------------------")
 
