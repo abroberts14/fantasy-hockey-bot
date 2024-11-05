@@ -482,7 +482,7 @@ class TeamManager:
         player_scores = {}
         score_weight = self.player_score_weight
         advanced_weight = self.advanced_score_weight
-        projection_weight = self.projections_weight
+        projection_weight = self.projection_weight
         ownership_weight = self.ownership_weight
 
         # score_weight = self.player_score_weight
