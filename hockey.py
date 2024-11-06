@@ -1481,7 +1481,7 @@ if __name__ == "__main__":
         pass
     look_for_free_agents = True
     yApi = api.YahooApi(os.path.dirname(os.path.realpath(__file__)))
-    manager = TeamManager(yApi, dry_run=False, cache=True)
+    manager = TeamManager(yApi, dry_run=False, cache=False)
     transactions = []
 
     team = manager.get_team()
@@ -1508,12 +1508,10 @@ if __name__ == "__main__":
     manager.set_league_rankings()
 
     logging.info("--------------------------------")
-    import sys
 
     if not manager.is_roster_full():
         manager.handle_necessary_adds()
     else:
-        # sys.exit(0)
         logging.info("Roster is full, no need to add any players")
 
     # Resync roster to latest
