@@ -576,7 +576,6 @@ class TeamManager:
                 advanced_stats = {stat: value for stat, value in periods["season"].items() if stat != "position_type" and stat not in cats}
                 advanced_score = sum(advanced_stats.values())
                 on_current_roster = player in [p["name"] for p in self.roster]
-                logging.info(f"Player {player} has game today: {stats_dict[player]}")
 
                 percent_owned = stats_dict[player]["percent_owned"]
                 has_game_today = stats_dict[player]["game_today"]
