@@ -1205,11 +1205,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--free-agents", dest="free_agents", action="store_true", help="Indicates to search for roster upgrades")
     args = parser.parse_args()
+    logging.info(f"Arguments: {args}")
     look_for_free_agents = args.free_agents
     if look_for_free_agents:
         # Morning-specific logic here
         logging.info("Looking for free agents")
     else:
+        logging.info("Running regular script")
         # Regular logic here
         pass
 
