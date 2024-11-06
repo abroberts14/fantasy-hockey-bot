@@ -9,7 +9,7 @@ import json
 import math
 import yahoo.api as api
 import argparse
-from util.parse import FantasyHockeyProjectionScraper
+from util.parse import FantasyHockeyProjectionScraper, FantasyHockeyGoalieScraper
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,14 +34,14 @@ class TeamManager:
         self.lineup = None  # dict of roster, grouped by position
         self.lineup_changes = []
         self.roster = []  # list of all players, not grouped by position
-
+        self.teams_playing = {}
         self.league_statistics = {}
         self.league_normalized_stats = {}
         self.league_rankings = {}
-
-        self.player_score_weight = 0.8
+        self.goalie_extra_stats = {}
+        self.player_score_weight = 1.3
         self.advanced_score_weight = 0.1
-        self.projection_weight = 0.2
+        self.projection_weight = 0.1
         self.ownership_weight = 0.3
 
         self.roster_ranked = {}  # dict of player name and ranked total points by time period
@@ -284,19 +284,35 @@ class TeamManager:
         else:
             logging.error(f"Invalid location to get stats for: {location}")
             return {}
-        valid_time_frames = ["lastweek", "lastmonth", "season", "average_season"]
         logging.info("Starting to fetch stats for all valid time frames.")
 
         # Collect player IDs for the API call
         player_ids = [player[id_key] for player in player_list]
+        player_details = self.yApi.league.player_details(player_ids)
 
         positions = "available_positions" if location == "roster" else "eligible_positions"
+        team_key = "id" if location == "roster" else "player_id"
         # Dictionary to hold stats per time frame
         stat_roster_list = {}
         # Loop through each time frame and fetch stats
         for player in player_list:
-            stat_roster_list[player["name"]] = {"percent_owned": player["percent_owned"], "available_positions": player[positions]}
-        for time_frame in valid_time_frames:
+            team = ""
+            for i in player_details:
+                # logging.info(f" comparing i {i} to {player}")
+                fetched_player_id = str(i["player_id"])
+                stat_player_id = str(player[team_key])
+                if fetched_player_id == stat_player_id:
+                    team = i["editorial_team_full_name"]
+                    break
+
+            has_game_today = self.teams_playing[team]
+            stat_roster_list[player["name"]] = {
+                "percent_owned": player["percent_owned"],
+                "available_positions": player[positions],
+                "team": team,
+                "game_today": has_game_today,
+            }
+        for time_frame in self.time_periods:
             # Fetch the stats from the league API
             player_stats = self.yApi.league.player_stats(player_ids, req_type=time_frame)
             # Store stats in the dictionary under their respective time frame
@@ -343,12 +359,33 @@ class TeamManager:
         logging.info(f"Goalie IDs collected: {goalie_ids}")
 
         # Fetch stats for all goalies for the specified time period using the league API
+
         goalie_player_stats = self.yApi.league.player_stats(goalie_ids, req_type=time_period)
         logging.debug(f"Fetched goalie stats for time period {time_period}: {goalie_player_stats}")
 
         # Sum up stats for all goalies
         for stat in goalie_player_stats:
             for key, value in stat.items():
+                if key == "name":
+                    goalie_name = value
+                    gp = self.find_player_in_stats(goalie_name, "taken", time_period).get("GP", 0)
+                    toi = self.find_player_in_stats(goalie_name, "taken", time_period).get("TOI", 0)
+                    gp_float = float(gp) if isinstance(gp, (int, float, str)) and str(gp).replace(".", "", 1).isdigit() else 0
+                    toi_float = float(toi) if isinstance(toi, (int, float, str)) and str(toi).replace(".", "", 1).isdigit() else 0
+                    if "GP" in goalie_stats:
+                        goalie_stats["GP"] += gp_float
+                        count["GP"] += 1
+                    else:
+                        goalie_stats["GP"] = gp_float
+                        count["GP"] = 1
+
+                    if "TOI" in goalie_stats:
+                        goalie_stats["TOI"] += toi_float
+                        count["TOI"] += 1
+                    else:
+                        goalie_stats["TOI"] = toi_float
+                        count["TOI"] = 1
+
                 if key not in ["player_id", "name", "position_type"]:
                     # Convert value to float to ensure correct data type for arithmetic operations
                     float_value = float(value) if isinstance(value, (int, float, str)) and str(value).replace(".", "", 1).isdigit() else 0
@@ -358,6 +395,7 @@ class TeamManager:
                     else:
                         goalie_stats[key] = float_value
                         count[key] = 1
+
         # Calculate averages
         average_stats = {key: goalie_stats[key] / count[key] for key in goalie_stats if count[key] > 0}
 
@@ -423,11 +461,16 @@ class TeamManager:
                         # Ensure value is a float for accurate comparisons and arithmetic operations
                         if isinstance(value, str):
                             value = float(value) if value.replace(".", "", 1).isdigit() else 0
-                        if stats["position_type"] == "G" and stat in self.league_average_goalie_stats[time_frame]:
-                            # Normalize goalie stats against league average
-                            value = value / self.league_average_goalie_stats[time_frame][stat] if self.league_average_goalie_stats[time_frame][stat] else 0
-                        elif stats["position_type"] != "G" and stat in self.league_average_skater_stats[time_frame]:
-                            value = value / self.league_average_skater_stats[time_frame][stat] if self.league_average_skater_stats[time_frame][stat] else 0
+
+                        is_goalie = stats["position_type"] == "G"
+                        league_average_stats = self.league_average_goalie_stats if is_goalie else self.league_average_skater_stats
+                        average_stat_value = league_average_stats[time_frame].get(stat, 0)
+                        # Handle goalie stats where lower is better
+                        if is_goalie:
+                            if average_stat_value != 0:
+                                # Normal goalie stats where higher is better
+                                value = value / average_stat_value
+
                         # Update max and min
                         if stat in stat_max:
                             stat_max[stat] = max(stat_max[stat], value)
@@ -435,29 +478,34 @@ class TeamManager:
                         else:
                             stat_max[stat] = value
                             stat_min[stat] = value
-
             # Normalize stats between 0 and 1
             for player, stats in time_frame_stats.items():
-                normalized_roster_stats[player]["percent_owned"] = stats_dict[player]["percent_owned"]
-                normalized_roster_stats[player]["available_positions"] = stats_dict[player]["available_positions"]
-                normalized_roster_stats[player][time_frame] = {}
+                player_normalized_stats = normalized_roster_stats[player]
+                player_normalized_stats["percent_owned"] = stats_dict[player]["percent_owned"]
+                player_normalized_stats["available_positions"] = stats_dict[player]["available_positions"]
+                player_normalized_stats["game_today"] = stats_dict[player]["game_today"]
+                time_frame_data = {}
+                player_normalized_stats[time_frame] = time_frame_data
                 for stat, value in stats.items():
                     if stat == "position_type":
-                        normalized_roster_stats[player][time_frame][stat] = value
+                        time_frame_data[stat] = value
                     else:
                         if isinstance(value, str):
                             value = float(value) if value.replace(".", "", 1).isdigit() else 0
-                        if stats["position_type"] == "G" and stat in self.league_average_goalie_stats[time_frame]:
-                            # Use the adjusted value for normalization
-                            value = value / self.league_average_goalie_stats[time_frame][stat] if self.league_average_goalie_stats[time_frame][stat] else 0
-                        elif stats["position_type"] != "G" and stat in self.league_average_skater_stats[time_frame]:
-                            value = value / self.league_average_skater_stats[time_frame][stat] if self.league_average_skater_stats[time_frame][stat] else 0
-                        # Normalize using max and min values
-                        if stat_max[stat] - stat_min[stat] > 0:  # Prevent division by zero
-                            normalized_value = (value - stat_min[stat]) / (stat_max[stat] - stat_min[stat])
-                            normalized_roster_stats[player][time_frame][stat] = round(normalized_value, 2)
+                        position_type = stats["position_type"]
+                        league_average_stats = self.league_average_goalie_stats if position_type == "G" else self.league_average_skater_stats
+                        average_stat_value = league_average_stats[time_frame].get(stat, 0)
+                        if average_stat_value != 0:
+                            value = value / average_stat_value
+
+                        stat_range = stat_max[stat] - stat_min[stat]
+                        if stat_range > 0:
+                            normalized_value = (value - stat_min[stat]) / stat_range
+                            if stat in self.yApi.inverse_league_stats and position_type == "G":
+                                normalized_value = 1 - normalized_value  # Invert scoring for specific stats
+                            time_frame_data[stat] = round(normalized_value, 2)
                         else:
-                            normalized_roster_stats[player][time_frame][stat] = 0.0
+                            time_frame_data[stat] = 0.0
 
         logging.debug("Normalized roster stats:")
         logging.debug("--------------------------------")
@@ -467,16 +515,43 @@ class TeamManager:
 
     def ownership_to_projected_points(self, percent_owned):
         """
-        Convert ownership percentage to a points value based on specified thresholds.
+        Convert ownership percentage to a points value using a piecewise function.
+
+        Returns:
+        - Negative values for ownership < 20%
+        - 0 around 20% ownership
+        - Gradually increasing values up to ~7 points at 90%+ ownership
         """
-        if percent_owned >= 100:
-            return 10
-        elif percent_owned >= 30:
-            return (percent_owned - 30) / 70 * 8 + 2  # Scale between 2 and 10
+        if percent_owned >= 90:
+            return 8 + ((percent_owned - 90) / 10) * 2
+        elif percent_owned >= 80:
+            # Scale from 5 to 7 for 80-100%
+            return 5 + ((percent_owned - 80) / 20) * 2
+        elif percent_owned >= 70:
+            # Scale from 3 to 5 for 70-80%
+            return 3 + ((percent_owned - 70) / 10) * 2
+        elif percent_owned >= 60:
+            # Scale from 2 to 3 for 60-70%
+            return 2 + ((percent_owned - 60) / 10)
+        elif percent_owned >= 40:
+            # Scale from 1 to 2 for 40-60%
+            return 1 + ((percent_owned - 40) / 20)
         elif percent_owned >= 20:
-            return (percent_owned - 20) / 10 * 1 + 1  # Scale between 1 and 2
+            # Scale from 0 to 1 for 20-40%
+            return (percent_owned - 20) / 20
         else:
-            return (percent_owned - 20) / 20  # Negative values below 20%
+            # Scale from -2 to 0 for 0-20%
+            return (percent_owned - 20) / 10 * 2
+        # if percent_owned >= 100:
+        #     return 10
+        # elif percent_owned >= 80:
+        #     return (percent_owned - 80) / 20 * 2 + 8  # Scale between 8 and 10
+        # elif percent_owned >= 30:
+        #     return (percent_owned - 30) / 70 * 6 + 2  # Scale between 2 and 10
+        # elif percent_owned >= 20:
+        #     return (percent_owned - 20) / 10 * 1 + 1  # Scale between 1 and 2
+        # else:
+        #     return (percent_owned - 20) / 20  # Negative values below 20%
 
     def rank_players_by_time_period(self, time_period, stats_dict):
         # Dictionary to hold total scores and position type for each player
@@ -501,11 +576,15 @@ class TeamManager:
                 advanced_stats = {stat: value for stat, value in periods["season"].items() if stat != "position_type" and stat not in cats}
                 advanced_score = sum(advanced_stats.values())
                 on_current_roster = player in [p["name"] for p in self.roster]
+                logging.info(f"Player {player} has game today: {stats_dict[player]}")
+
                 percent_owned = stats_dict[player]["percent_owned"]
+                has_game_today = stats_dict[player]["game_today"]
                 scaled_percent_owned = (percent_owned / 100) * ownership_weight  # Apply weight to ownership
                 projections = self.get_player_projections(player)
                 if projections:
                     projections_score = float(projections["Fantasy"])
+
                     weighted_score = (
                         (category_score * score_weight) + (advanced_score * advanced_weight) + (projections_score * projection_weight) + scaled_percent_owned
                     )
@@ -525,6 +604,7 @@ class TeamManager:
                     "on_current_roster": on_current_roster,
                     "percent_owned": percent_owned,
                     "projections_score": projections_score,
+                    "game_today": has_game_today,
                 }
 
         # Sort players by their total scores in descending order
@@ -817,21 +897,28 @@ class TeamManager:
             scraper_goalies.fetch_data()
             skaters = scraper_skaters.fetch_all_players()
             goalies = scraper_goalies.fetch_all_players()
+
             self.player_projections = {**skaters, **goalies}
             if self.cache:
                 with open(os.path.join(self.stats_dir, f"{self.today}_player_projections.json"), "w") as f:
                     json.dump(self.player_projections, f)
             return self.player_projections
 
+        def scrape_goalies_extra_stats():
+            scrape_goalies_extra_stats = FantasyHockeyGoalieScraper()
+            goalies_extra_stats = scrape_goalies_extra_stats.fetch_all_time_periods()
+            return goalies_extra_stats
+
         self.player_projections = self._load_or_fetch("player_projections", scrape)
+        self.goalie_extra_stats = self._load_or_fetch("goalie_extra_stats", scrape_goalies_extra_stats)
         logging.info(f"Player projections length: {len(self.player_projections) }")
         # Fetch or load each dataset
         self.taken_players_raw = self._load_or_fetch("taken_players_raw", self.yApi.league.taken_players)
         self.free_agents_skaters_raw = self._load_or_fetch("free_agents_skaters_raw", self.yApi.league.free_agents, position="P")
         self.free_agents_goalies_raw = self._load_or_fetch("free_agents_goalies_raw", self.yApi.league.free_agents, position="G")
-
-        self.league_average_goalie_stats = self._load_or_fetch("league_average_goalie_stats", self.get_league_average_goalie_stats)
-        self.league_average_skater_stats = self._load_or_fetch("league_average_skater_stats", self.get_league_average_skater_stats)
+        self.teams_playing = self._load_or_fetch("teams_playing", self.yApi.get_all_teams_next_games)
+        # self.league_average_goalie_stats = self._load_or_fetch("league_average_goalie_stats", self.get_league_average_goalie_stats)
+        # self.league_average_skater_stats = self._load_or_fetch("league_average_skater_stats", self.get_league_average_skater_stats)
 
         try:
             self.league_statistics = {}
@@ -845,9 +932,30 @@ class TeamManager:
             self.league_statistics["free_agents_skaters"] = self.get_stats_for_league(location="free_agents", position="P")
             self.league_statistics["free_agents_goalies"] = self.get_stats_for_league(location="free_agents", position="G")
             self.league_statistics["roster"] = self.get_stats_for_league(location="roster")
-            if self.cache:
-                with open(os.path.join(self.stats_dir, f"{self.today}_league_statistics.json"), "w") as f:
-                    json.dump(self.league_statistics, f)
+
+        # ADD TOI AND GP TO GOALIE STATS
+        for location in ["taken", "free_agents_goalies", "roster"]:
+            for player_name, player_stats in self.league_statistics[location].items():
+                if "G" in player_stats.get("available_positions", []):  # Check if player is a goalie
+                    for period in self.time_periods:
+                        period_stats = self.goalie_extra_stats.get(period, {})
+                        goalie = period_stats.get(player_name, "")
+
+                        if goalie:
+                            # logging.info(f"adding gp for period {period}")
+                            toi = goalie.get("TOI", "0.00")
+                            if isinstance(toi, str):
+                                toi = toi.replace(":", ".", 1)
+                            toi_float = float(toi)
+
+                            player_stats[period]["GP"] = int(goalie.get("GP", 0))
+                            player_stats[period]["TOI"] = float(toi_float)
+
+        self.league_average_goalie_stats = self._load_or_fetch("league_average_goalie_stats", self.get_league_average_goalie_stats)
+        self.league_average_skater_stats = self._load_or_fetch("league_average_skater_stats", self.get_league_average_skater_stats)
+        if self.cache:
+            with open(os.path.join(self.stats_dir, f"{self.today}_league_statistics.json"), "w") as f:
+                json.dump(self.league_statistics, f)
         try:
             self.league_normalized_stats = {}
             if self.cache:
@@ -886,6 +994,8 @@ class TeamManager:
 
                     else:
                         self.league_rankings[location][time_frame] = self.rank_players_by_time_period(time_frame, self.league_normalized_stats[location])
+                averaged_rankings = self._average_player_data(self.league_rankings[location]["lastweek"], self.league_rankings[location]["lastmonth"])
+                self.league_rankings[location]["lasttwoweeks"] = self.sort_and_rank_players(averaged_rankings)
 
         # with open(os.path.join(self.stats_dir, f"{self.today}_league_rankings.json"), "w") as f:
         #     json.dump(self.league_rankings, f)
@@ -896,6 +1006,10 @@ class TeamManager:
             if name == player_name:
                 return player
         return None
+
+    def find_player_in_stats(self, player_name, location, time_period):
+        p = self.league_statistics[location].get(player_name, {})
+        return p.get(time_period, "")
 
     def is_player_injured(self, player_name):
         player = self.find_player_in_roster(player_name)
@@ -909,14 +1023,55 @@ class TeamManager:
             else:
                 return False
 
-    def compare_roster_to_free_agents(self, potential_free_agents):
-        current_roster_skaters = self.get_league_ranks_by_time_period("lastweek", "roster", roster_only=True, position_type="P")
-        current_roster_goalies = self.get_league_ranks_by_time_period("lastmonth", "roster", roster_only=True, position_type="G")
+    def _average_player_data(self, week_data, month_data):
+        """Helper method to average player data from two time periods with 60/40 weighting."""
+        averaged_data = []
+
+        # Define weights (60% week, 40% month)
+        WEEK_WEIGHT = 0.5
+        MONTH_WEIGHT = 0.5
+
+        # Create dictionaries for easier lookup
+        week_dict = {name: data for name, data in week_data}
+        month_dict = {name: data for name, data in month_data}
+
+        # Get all unique player names
+        all_players = set(week_dict.keys()) | set(month_dict.keys())
+
+        for player in all_players:
+            week_stats = week_dict.get(player, {})
+            month_stats = month_dict.get(player, {})
+
+            if not week_stats or not month_stats:
+                # If player only exists in one period, use that period's data
+                combined_stats = week_stats or month_stats
+            else:
+                # Weighted average of numeric values
+                combined_stats = {
+                    "score": (week_stats.get("score", 0) * WEEK_WEIGHT + month_stats.get("score", 0) * MONTH_WEIGHT),
+                    "advanced_score": (week_stats.get("advanced_score", 0) * WEEK_WEIGHT + month_stats.get("advanced_score", 0) * MONTH_WEIGHT),
+                    "weighted_score": (week_stats.get("weighted_score", 0) * WEEK_WEIGHT + month_stats.get("weighted_score", 0) * MONTH_WEIGHT),
+                    "projections_score": (week_stats.get("projections_score", 0) * WEEK_WEIGHT + month_stats.get("projections_score", 0) * MONTH_WEIGHT),
+                    "percent_owned": (week_stats.get("percent_owned", 0) * WEEK_WEIGHT + month_stats.get("percent_owned", 0) * MONTH_WEIGHT),
+                    # Preserve non-numeric values from either period
+                    "position_type": week_stats.get("position_type") or month_stats.get("position_type"),
+                    "available_positions": week_stats.get("available_positions") or month_stats.get("available_positions"),
+                    "on_current_roster": week_stats.get("on_current_roster") or month_stats.get("on_current_roster"),
+                }
+
+            averaged_data.append((player, combined_stats))
+
+        return averaged_data
+
+    def compare_roster_to_free_agents(self, potential_free_agents_skaters, potential_free_agents_goalies):
+        current_roster_skaters = self.get_league_ranks_by_time_period("lastweek", "taken", roster_only=True, position_type="P")
+        current_roster_goalies = self.get_league_ranks_by_time_period("lastweek", "taken", roster_only=True, position_type="G")
         combined_current_roster = current_roster_skaters + current_roster_goalies
         current_roster = self.sort_and_rank_players(combined_current_roster)
-        free_agents_lastweek = potential_free_agents["lastweek"]
+        free_agents_lastweek_skaters = potential_free_agents_skaters["lastweek"]
+        free_agents_lastweek_goalies = potential_free_agents_goalies["lastweek"]
 
-        combined = current_roster + free_agents_lastweek
+        combined = current_roster + free_agents_lastweek_skaters + free_agents_lastweek_goalies
         sorted_combined = self.sort_and_rank_players(combined)
         required_total, active_roster_count = self.get_required_and_active_roster_spots()
 
@@ -924,31 +1079,54 @@ class TeamManager:
 
         worst_rostered_players = list(reversed(current_roster))
         for name, data in worst_rostered_players:
+            comparison_data = []
             player = self.find_player_in_roster(name)
             if self.is_player_injured(name):
                 continue
 
-            logging.debug(f"\nRostered Player: {name}")
-            logging.debug(f"Score: projections {data['projections_score']:.2f} | weighted {data['weighted_score']:.2f} | Owned: {data['percent_owned']}%")
             if player["locked"]:
                 logging.debug(f"{name} is locked, skipping")
                 continue
+            if player["isGoalie"]:
+                free_agents = free_agents_lastweek_goalies
+            else:
+                free_agents = free_agents_lastweek_skaters
+
             # Find potential upgrades among free agents
-            for fa_name, fa_data in free_agents_lastweek:
+            for fa_name, fa_data in free_agents:
                 score_difference = fa_data["weighted_score"] - data["weighted_score"]
+                comparison_data.append(
+                    {
+                        "rostered": {"name": name, "data": data},
+                        "free_agent": {"name": fa_name, "data": fa_data},
+                        "improvement": score_difference,
+                    }
+                )
                 can_play_position = next((pos for pos in fa_data.get("available_positions", []) if pos in data.get("available_positions", [])), None)
 
                 if can_play_position:
-                    logging.debug(f"Found matching position: {can_play_position}")
+                    logging.debug(f"Found matching position: {can_play_position} for {fa_name} over {name}")
                 else:
                     logging.debug("No matching positions found")
                 score_threshold = 2
+
                 if can_play_position == "Util":
                     score_threshold = score_threshold + 1
                 close_replacements = []
-                if score_difference > score_threshold and can_play_position and can_play_position != "Util":
+                fa_game_today = fa_data.get("game_today", False)
+                roster_game_today = data.get("game_today", False)
+                if player["isGoalie"]:
+                    if fa_game_today and not roster_game_today:
+                        logging.info(
+                            f"Potential streamer - {fa_name}: Score: {fa_data['weighted_score']:.2f}({score_difference}| Owned: {fa_data['percent_owned']}% | Can Play {can_play_position} |Game Today: {fa_game_today}"
+                        )
+
+                        score_threshold = 1.5
+                    else:
+                        score_threshold = 2
+                if score_difference > score_threshold and can_play_position and can_play_position != "Util" and fa_game_today:
                     logging.info(f"Potential Upgrade: {fa_name}")
-                    logging.info(f"Score: {fa_data['weighted_score']:.2f} | Owned: {fa_data['percent_owned']}%")
+                    logging.info(f"Score: {fa_data['weighted_score']:.2f} | Owned: {fa_data['percent_owned']}% | Game Today: {fa_game_today}")
                     logging.info(f"Improvement: {score_difference:.2f} points")
 
                     suggested_replacements.append(
@@ -961,8 +1139,8 @@ class TeamManager:
                         }
                     )
                 else:
-                    if score_difference > 0:
-                        logging.info(f"FA {fa_name} almost a match over {name}: {score_difference:.2f} points | {can_play_position}")
+                    if score_difference > -5:
+                        # logging.info(f"FA {fa_name} almost a match over {name}: {score_difference:.2f} points | {can_play_position}")
                         if can_play_position:
                             close_replacements.append(
                                 {
@@ -973,6 +1151,72 @@ class TeamManager:
                                     "add_score": fa_data["weighted_score"],
                                 }
                             )
+                        # After the loop, print the comparison table for all matches
+            if comparison_data:
+                logging.info("")
+                # Group comparisons by rostered player
+                grouped_comparisons = {}
+                for comp in comparison_data[:3]:
+                    rostered_name = comp["rostered"]["name"]
+                    if rostered_name not in grouped_comparisons:
+                        grouped_comparisons[rostered_name] = {"rostered": comp["rostered"], "alternatives": []}
+                    grouped_comparisons[rostered_name]["alternatives"].append(comp["free_agent"])
+
+                # Print the comparison table
+                for rostered_name, group in grouped_comparisons.items():
+                    rostered = group["rostered"]
+                    alternatives = group["alternatives"]
+
+                    def format_player_name(full_name):
+                        parts = full_name.split()
+                        if len(parts) >= 2:
+                            return f"{parts[0][0]}. {' '.join(parts[1:])}"
+                        return full_name
+
+                    # Create the header row with proper spacing
+                    players = [format_player_name(rostered["name"])] + [format_player_name(alt["name"]) for alt in alternatives]
+                    header = f"{'':<5} {players[0]:>7} -> " + " | ".join(f"{name:>15}" for name in players[1:])
+                    logging.info(f"{header}")
+                    logging.info("-" * (20 * len(players)))
+
+                    # Print each metric
+                    metrics = [
+                        ("Weighted", "weighted_score"),
+                        ("Score", "score"),
+                        ("Advanced", "advanced_score"),
+                        ("Owned %", "percent_owned"),
+                        ("Proj", "projections_score"),
+                        ("Pos", "available_positions"),
+                    ]
+
+                    for metric_name, metric_key in metrics:
+                        values = []
+                        # Add rostered player value
+                        if metric_key == "available_positions":
+                            values.append(f"{metric_name:<8}: {','.join(rostered['data'][metric_key]):>6}")
+                        else:
+                            values.append(f"{metric_name:<8}: {rostered['data'][metric_key]:>6.2f}")
+
+                        # Add alternatives values
+                        for alt in alternatives:
+                            if metric_key == "available_positions":
+                                values.append(f"{','.join(alt['data'][metric_key]):>15}")
+                            else:
+                                if metric_key == "weighted_score":
+                                    weighted_score = round(alt["data"][metric_key], 2)
+                                    score_difference = round(weighted_score - rostered["data"][metric_key], 2)
+                                    if score_difference > 0:
+                                        append_sign = "+"
+                                    else:
+                                        append_sign = ""
+                                    score_string = f"({append_sign}{score_difference})"
+                                    values.append(f"{weighted_score:>8.2f}{score_string:>7}")
+                                else:
+                                    values.append(f"{alt['data'][metric_key]:>15.2f}")
+                        logging.info(" | ".join(values))
+                    logging.info("-" * (20 * len(players)))
+                    logging.info("")
+                    logging.info("")
 
         for name, data in sorted_combined:
             logging.debug(
@@ -984,8 +1228,9 @@ class TeamManager:
     def find_best_free_agents(self, position_type="P"):
         free_agent_skaters_by_period = {}
         free_agent_skaters = self.get_league_ranks_by_time_period("season", "free_agents", roster_only=False, position_type=position_type)
-
-        for time_period in self.time_periods:
+        new_periods = self.time_periods.copy()
+        new_periods.append("lasttwoweeks")
+        for time_period in new_periods:
             free_agent_skaters = self.get_league_ranks_by_time_period(time_period, "free_agents", roster_only=False, position_type=position_type)
             free_agent_skaters_by_period[time_period] = free_agent_skaters[:30]  # Get top 30 skaters for the period
         season_players = {player[0] for player in free_agent_skaters_by_period.get("season", [])}
@@ -994,8 +1239,6 @@ class TeamManager:
         skaters = free_agent_skaters_by_period.get("season", [])
 
         for name, data in skaters:
-            if data["rank"] > 25:
-                break
             total_percent.append(data["percent_owned"])
             logging.debug(
                 f"{name} - Score: {data["score"]} | Advanced Score: {data["advanced_score"]} | Weighted Score: {data["weighted_score"]} | Projection Score: {data["projections_score"]} | Percent: {data["percent_owned"]} "
@@ -1015,7 +1258,9 @@ class TeamManager:
         logging.info(f"Players common in all periods: {len(common_players)}")
         # Filter lists to include only common players
         for period in free_agent_skaters_by_period:
-            free_agent_skaters_by_period[period] = [player for player in free_agent_skaters_by_period[period] if player[0] in common_players]
+            free_agent_skaters_by_period[period] = [
+                player for player in free_agent_skaters_by_period[period] if (player[0] in common_players and player[1]["percent_owned"] >= 10)
+            ]
 
         return free_agent_skaters_by_period
 
@@ -1173,6 +1418,26 @@ class TeamManager:
 
         return filtered_rankings
 
+    def get_league_stats_by_time_period(self, time_period, location, roster_only=False, position_type="both"):
+        # Retrieve the list of players for the specified location and time period
+        players = self.league_stats[location][time_period]
+
+        # Define a function to check if a player should be included based on the position type
+        def is_correct_position(player):
+            if position_type == "both":
+                return True  # All players are included if we're looking for both positions
+            return player[1]["position_type"] == position_type
+
+        # Define a function to check roster status
+        def is_on_roster(player):
+            # Only check roster status if 'roster_only' is True
+            return player[1].get("on_current_roster", False) if roster_only else True
+
+        # Combine the filters and apply them
+        filtered_stats = [player for player in players if is_correct_position(player) and is_on_roster(player)]
+
+        return filtered_stats
+
     def _load_or_fetch(self, filename, fetch_func, **kwargs):
         if not self.cache:
             if fetch_func is not None:
@@ -1214,12 +1479,12 @@ if __name__ == "__main__":
         logging.info("Running regular script")
         # Regular logic here
         pass
-
+    look_for_free_agents = True
     yApi = api.YahooApi(os.path.dirname(os.path.realpath(__file__)))
-    manager = TeamManager(yApi, dry_run=False, cache=False)
+    manager = TeamManager(yApi, dry_run=False, cache=True)
     transactions = []
 
-    team = manager.get_team(True)
+    team = manager.get_team()
 
     logging.info("--------------------------------")
 
@@ -1243,10 +1508,12 @@ if __name__ == "__main__":
     manager.set_league_rankings()
 
     logging.info("--------------------------------")
+    import sys
 
     if not manager.is_roster_full():
         manager.handle_necessary_adds()
     else:
+        # sys.exit(0)
         logging.info("Roster is full, no need to add any players")
 
     # Resync roster to latest
@@ -1255,9 +1522,10 @@ if __name__ == "__main__":
     if look_for_free_agents:
         logging.info("--------------------------------")
 
-        free_agents = manager.find_best_free_agents()
-        logging.info(f"Potential free agents length: {len(free_agents['lastweek'])}")
-        possible_adds, close_replacements = manager.compare_roster_to_free_agents(free_agents)
+        free_agents_skaters = manager.find_best_free_agents("P")
+        free_agents_goalies = manager.find_best_free_agents("G")
+        logging.info(f"Potential free agents length: {len(free_agents_skaters['lastweek']) + len(free_agents_goalies['lastweek'])}")
+        possible_adds, close_replacements = manager.compare_roster_to_free_agents(free_agents_skaters, free_agents_goalies)
         for i in possible_adds:
             logging.info(f"{i['add']} - {i['drop']} - {i['improvement']:.2f} points")
 
@@ -1279,3 +1547,66 @@ if __name__ == "__main__":
     manager.log_lineup()
     for transaction in transactions:
         logging.info(transaction)
+
+    pos = "G"
+    name_to_check = "Nikita Kucherov"
+
+    lastweek = manager.get_league_ranks_by_time_period("lastweek", "taken", roster_only=False, position_type=pos)
+    lastmonth = manager.get_league_ranks_by_time_period("lastmonth", "free_agents", roster_only=False, position_type=pos)
+    season = manager.get_league_ranks_by_time_period("season", "free_agents", roster_only=False, position_type=pos)
+
+    logging.info("--------------------------------")
+    logging.info("Last week")
+    for name, data in lastweek[15:]:
+        logging.info(
+            f"{name} - weighted {data['weighted_score']:.2f} - score {data['score']:.2f} - advanced {data['advanced_score']:.2f} - projections {data['projections_score']:.2f}"
+        )
+
+    # logging.info("--------------------------------")
+    # logging.info("Last month")
+    # for name, data in lastmonth[:15]:
+    #     logging.info(f"{name} - {data['weighted_score']}")
+
+    # logging.info("--------------------------------")
+    # logging.info("Season")
+    # for name, data in season[:15]:
+    #     logging.info(f"{name} weighted score: {data['weighted_score']}")
+
+    # tm = "Washington Capitals"
+    # next_g = manager.yApi.team_next_game(tm)
+    # logging.info(f"next game {next_g}")
+
+    # s = manager.today == next_g if next_g else False
+    # logging.info(s)
+    # for name, data in lastweek:
+    #     if name == name_to_check:
+    #         logging.info(f"{name} last week weighted score: {data['weighted_score']}")
+    #         logging.info(f"{name} last week score: {data['score']}")
+    #         logging.info(f"{name} last week advanced score: {data['advanced_score']}")
+    #         logging.info(f"{name} last week projections score: {data['projections_score']}")
+
+    # logging.info("--------------------------------")
+    # for name, data in lasttwoweeks:
+    #     if name == name_to_check:
+    #         logging.info(f"{name} last two weeks weighted score: {data['weighted_score']}")
+    #         logging.info(f"{name} last two weeks score: {data['score']}")
+    #         logging.info(f"{name} last two weeks advanced score: {data['advanced_score']}")
+    #         logging.info(f"{name} last two weeks projections score: {data['projections_score']}")
+
+    # logging.info("--------------------------------")
+
+    # for name, data in lastmonth:
+    #     if name == name_to_check:
+    #         logging.info(f"{name} last month weighted score: {data['weighted_score']}")
+    #         logging.info(f"{name} last month score: {data['score']}")
+    #         logging.info(f"{name} last month advanced score: {data['advanced_score']}")
+    #         logging.info(f"{name} last month projections score: {data['projections_score']}")
+
+    # logging.info("--------------------------------")
+
+    # for name, data in season:
+    #     if name == name_to_check:
+    #         logging.info(f"{name} season weighted score: {data['weighted_score']}")
+    #         logging.info(f"{name} season score: {data['score']}")
+    #         logging.info(f"{name} season advanced score: {data['advanced_score']}")
+    #         logging.info(f"{name} season projections score: {data['projections_score']}")

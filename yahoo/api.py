@@ -46,6 +46,7 @@ class YahooApi:
             self.max_moves = self.league_settings["max_weekly_adds"]
             self.team = self.league.to_team(self.team_key)
             self.league_categories = self.league.stat_categories()
+            self.inverse_league_stats = ["L", "GA", "GAA"]
             self.skater_categories = [cat["display_name"] for cat in self.league_categories if cat["position_type"] == "P"]
             self.goalie_categories = [cat["display_name"] for cat in self.league_categories if cat["position_type"] == "G"]
             self.team_data = self.league.teams()[self.team_key]
@@ -176,3 +177,35 @@ class YahooApi:
         player["next_game"] = nextGame["games"][0]["gameDate"]
 
         return player
+
+    def team_next_game(self, team):
+        url = NEXT_GAME_URL % NHL_TEAM_ID[team]
+        # logging.info("Next game url: %s" % url)
+        response = requests.get(url)
+        nextGame = json.loads(response.content)
+        # logging.info("Next game: %s" % nextGame)
+        return nextGame["games"][0]["gameDate"]
+
+    def get_all_teams_next_games(self):
+        """
+        Returns a dictionary of all NHL teams with boolean values indicating if they play today
+
+        Returns:
+            dict: Format {'Team Name': bool} where bool is True if team plays today
+        """
+        today = datetime.datetime.now().date()
+        teams_playing = {}
+
+        for team in NHL_TEAM_ID.keys():
+            try:
+                url = NEXT_GAME_URL % NHL_TEAM_ID[team]
+                logging.debug("Next game url: %s" % url)
+                response = requests.get(url)
+                json_content = json.loads(response.content)
+                next_game = json_content["games"][0]["gameDate"]
+                logging.debug(f"Comparing {next_game} to {today}: { str(next_game) == str(today)}")
+                teams_playing[team] = str(next_game) == str(today)
+            except Exception as e:
+                self.logger.error(f"Error getting next game for {team}: {str(e)}")
+                teams_playing[team] = False
+        return teams_playing
