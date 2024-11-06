@@ -47,8 +47,13 @@ jobs:
       run: mkdir -p /home/runner/work/fantasy-hockey-bot/fantasy-hockey-bot/tokens/
     - name: Run Hockey Bot
       run: |
-        if [[ $(date +%M) == "00" ]]; then
+        current_minute=$(date +%M)
+        echo "Current minute: $current_minute"
+
+        if [[ $current_minute -lt 5 ]]; then
+          echo "Running free agents script"
           ./hockey.py --free-agents
         else
+          echo "Running regular script"
           ./hockey.py
         fi
