@@ -50,7 +50,7 @@ jobs:
         current_minute=$(date +%M)
         echo "Current minute: $current_minute"
 
-        if [[ $current_minute -lt 5 ]]; then
+        if [[ $current_minute -lt 15 ]]; then
           echo "Running free agents script"
           ./hockey.py --free-agents
         else
