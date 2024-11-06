@@ -1478,7 +1478,7 @@ if __name__ == "__main__":
         logging.info("Running regular script")
         # Regular logic here
         pass
-    look_for_free_agents = True
+    # look_for_free_agents = True
     yApi = api.YahooApi(os.path.dirname(os.path.realpath(__file__)))
     manager = TeamManager(yApi, dry_run=False, cache=False)
     transactions = []
