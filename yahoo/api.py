@@ -183,7 +183,8 @@ class YahooApi:
         # logging.info("Next game url: %s" % url)
         response = requests.get(url)
         nextGame = json.loads(response.content)
-        # logging.info("Next game: %s" % nextGame)
+
+        logging.info("Next game: %s" % nextGame)
         return nextGame["games"][0]["gameDate"]
 
     def get_all_teams_next_games(self):

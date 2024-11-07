@@ -9,7 +9,7 @@ import json
 import math
 import yahoo.api as api
 import argparse
-from util.parse import FantasyHockeyProjectionScraper, FantasyHockeyGoalieScraper
+from util.parse import FantasyHockeyProjectionScraper, FantasyHockeyGoalieScraper, StartingGoalieScraper
 
 logging.basicConfig(
     level=logging.INFO,
@@ -108,6 +108,10 @@ class TeamManager:
             player_data["percent_owned"] = self.yApi.league.percent_owned([player["player_id"]])[0]["percent_owned"]
 
             player_data["locked"] = int(player_data["percent_owned"]) >= 80
+            if player_data["isGoalie"]:
+                player_data["starting_behind_net"] = False
+                starting_goalies = StartingGoalieScraper().get_starting_goalies([player_data["name"]])
+                player_data["starting_behind_net"] = starting_goalies[player_data["name"]]
 
             team.append(player_data)
             if position not in lineups:
@@ -116,6 +120,7 @@ class TeamManager:
             # Add to active_players if not on IL/IR
             if position not in self.inactive_positions:
                 self.active_players.append(player_data)
+
         if self.previous_lineup is None:
             self.previous_lineup = lineups
         self.lineup = lineups
@@ -303,11 +308,13 @@ class TeamManager:
                 stat_player_id = str(player[team_key])
                 if fetched_player_id == stat_player_id:
                     team = i["editorial_team_full_name"]
+                    # logging.info(f"player {i}")
                     break
 
             has_game_today = self.teams_playing[team]
             stat_roster_list[player["name"]] = {
                 "percent_owned": player["percent_owned"],
+                # "new_notes_timestamp": player["new_notes_timestamp"],
                 "available_positions": player[positions],
                 "team": team,
                 "game_today": has_game_today,
@@ -576,7 +583,6 @@ class TeamManager:
                 advanced_stats = {stat: value for stat, value in periods["season"].items() if stat != "position_type" and stat not in cats}
                 advanced_score = sum(advanced_stats.values())
                 on_current_roster = player in [p["name"] for p in self.roster]
-
                 percent_owned = stats_dict[player]["percent_owned"]
                 has_game_today = stats_dict[player]["game_today"]
                 scaled_percent_owned = (percent_owned / 100) * ownership_weight  # Apply weight to ownership
@@ -752,6 +758,7 @@ class TeamManager:
                     players,
                     key=lambda x: (
                         x["next_game"] != self.today,  # Game status now first
+                        not x.get("starting_behind_net", False),
                         -x["points"],
                         (int(time.time()) - int(x.get("new_notes_timestamp", 0))) / 3600,
                     ),
@@ -877,10 +884,16 @@ class TeamManager:
         logging.info("Current Lineup Details:")
         for position, players in self.lineup.items():
             for player in players:
-                logging.info(
-                    f"{position}: {player['name']} (Avail Pos: {', '.join(player['available_positions'])}) "
-                    f"- {player['points']} points - Game Today: {player['next_game'] == self.today}"
-                )
+                if player["isGoalie"]:
+                    logging.info(
+                        f"{position}: {player['name']} (Avail Pos: {', '.join(player['available_positions'])}) "
+                        f"- {player['points']} points - Game Today: {player['next_game'] == self.today} | Starting Behind Net: {player['starting_behind_net']}"
+                    )
+                else:
+                    logging.info(
+                        f"{position}: {player['name']} (Avail Pos: {', '.join(player['available_positions'])}) "
+                        f"- {player['points']} points - Game Today: {player['next_game'] == self.today}"
+                    )
 
         logging.info(f"Lineup changes: {self.get_lineup_changes()}")
 
@@ -1074,9 +1087,14 @@ class TeamManager:
         sorted_combined = self.sort_and_rank_players(combined)
         required_total, active_roster_count = self.get_required_and_active_roster_spots()
 
+        # Count the number of goalies in the starting lineup who have games today
+        goalies_starting_behind_net = [goalie for goalie in current_roster_goalies if goalie[1].get("starting_behind_net", False)]
+        goalies_playing_today_count = len(goalies_starting_behind_net)
+
         suggested_replacements = []
 
         worst_rostered_players = list(reversed(current_roster))
+
         for name, data in worst_rostered_players:
             comparison_data = []
             player = self.find_player_in_roster(name)
@@ -1086,14 +1104,61 @@ class TeamManager:
             if player["locked"]:
                 logging.debug(f"{name} is locked, skipping")
                 continue
+
             if player["isGoalie"]:
+                # Skip picking up or dropping a goalie if we already have two goalies with games today in the starting lineup
+                if goalies_playing_today_count >= 2:
+                    if not data.get("game_today", False):
+                        logging.info(f"Avoiding dropping bench goalie {name} that has no game today, as we already have two goalies with games today")
+                        continue
+                    else:
+                        logging.info(f"Goalie {name} has no game today, potential streamer")
                 free_agents = free_agents_lastweek_goalies
             else:
                 free_agents = free_agents_lastweek_skaters
-
+            rostered_goalie_starting = False
             # Find potential upgrades among free agents
             for fa_name, fa_data in free_agents:
                 score_difference = fa_data["weighted_score"] - data["weighted_score"]
+
+                can_play_position = next((pos for pos in fa_data.get("available_positions", []) if pos in data.get("available_positions", [])), None)
+
+                if can_play_position:
+                    logging.debug(f"Found matching position: {can_play_position} for {fa_name} over {name}")
+                else:
+                    logging.debug("No matching positions found")
+                score_threshold = 2.5
+
+                if can_play_position == "Util":
+                    score_threshold = score_threshold + 0.5
+                close_replacements = []
+                fa_game_today = fa_data.get("game_today", False)
+                rosted_game_today = data.get("game_today", False)
+                rostered_goalie_starting = False
+                fa_goalie_starting = False
+                data["starting_behind_net"] = False
+                fa_data["starting_behind_net"] = False
+                if player["isGoalie"]:
+                    starting_goalies = StartingGoalieScraper().get_starting_goalies([fa_name, name])
+
+                    rostered_goalie_starting = starting_goalies[name]
+                    fa_goalie_starting = starting_goalies[fa_name]
+                    data["starting_behind_net"] = rostered_goalie_starting
+                    fa_data["starting_behind_net"] = fa_goalie_starting
+                    if rostered_goalie_starting:
+                        logging.info(f"No need to stream in {fa_name} as our current goalie {name} is starting")
+                        continue
+                    if fa_goalie_starting:
+                        logging.info(
+                            f"Potential streamer - {fa_name}: Score: {fa_data['weighted_score']:.2f}({score_difference}| Owned: {fa_data['percent_owned']}% | Can Play {can_play_position} |Game Today: {fa_game_today}"
+                        )
+                        score_threshold = 3
+                        if not rosted_game_today:
+                            score_threshold = 2.5
+                    else:
+                        logging.info(f"Skipping non starting FA goalie {fa_name}")
+                        continue
+
                 comparison_data.append(
                     {
                         "rostered": {"name": name, "data": data},
@@ -1101,42 +1166,22 @@ class TeamManager:
                         "improvement": score_difference,
                     }
                 )
-                can_play_position = next((pos for pos in fa_data.get("available_positions", []) if pos in data.get("available_positions", [])), None)
-
-                if can_play_position:
-                    logging.debug(f"Found matching position: {can_play_position} for {fa_name} over {name}")
-                else:
-                    logging.debug("No matching positions found")
-                score_threshold = 2
-
-                if can_play_position == "Util":
-                    score_threshold = score_threshold + 1
-                close_replacements = []
-                fa_game_today = fa_data.get("game_today", False)
-                roster_game_today = data.get("game_today", False)
-                if player["isGoalie"]:
-                    if fa_game_today and not roster_game_today:
-                        logging.info(
-                            f"Potential streamer - {fa_name}: Score: {fa_data['weighted_score']:.2f}({score_difference}| Owned: {fa_data['percent_owned']}% | Can Play {can_play_position} |Game Today: {fa_game_today}"
-                        )
-
-                        score_threshold = 1.5
-                    else:
-                        score_threshold = 2
                 if score_difference > score_threshold and can_play_position and can_play_position != "Util" and fa_game_today:
                     logging.info(f"Potential Upgrade: {fa_name}")
                     logging.info(f"Score: {fa_data['weighted_score']:.2f} | Owned: {fa_data['percent_owned']}% | Game Today: {fa_game_today}")
                     logging.info(f"Improvement: {score_difference:.2f} points")
-
-                    suggested_replacements.append(
-                        {
-                            "drop": name,
-                            "add": fa_name,
-                            "improvement": score_difference,
-                            "drop_score": data["weighted_score"],
-                            "add_score": fa_data["weighted_score"],
-                        }
-                    )
+                    if name not in [replacement["drop"] for replacement in suggested_replacements]:
+                        suggested_replacements.append(
+                            {
+                                "drop": name,
+                                "add": fa_name,
+                                "improvement": score_difference,
+                                "drop_score": data["weighted_score"],
+                                "add_score": fa_data["weighted_score"],
+                            }
+                        )
+                    else:
+                        logging.info(f"Not adding {fa_name} for {name} as we already have a suggested replacement")
                 else:
                     if score_difference > -5:
                         # logging.info(f"FA {fa_name} almost a match over {name}: {score_difference:.2f} points | {can_play_position}")
@@ -1186,6 +1231,7 @@ class TeamManager:
                         ("Owned %", "percent_owned"),
                         ("Proj", "projections_score"),
                         ("Pos", "available_positions"),
+                        ("In Net", "starting_behind_net"),
                     ]
 
                     for metric_name, metric_key in metrics:
@@ -1210,6 +1256,12 @@ class TeamManager:
                                         append_sign = ""
                                     score_string = f"({append_sign}{score_difference})"
                                     values.append(f"{weighted_score:>8.2f}{score_string:>7}")
+                                elif metric_key == "starting_behind_net":
+                                    if alt["data"][metric_key]:
+                                        s = "Yes"
+                                    else:
+                                        s = "No"
+                                    values.append(f"{s:>15}")
                                 else:
                                     values.append(f"{alt['data'][metric_key]:>15.2f}")
                         logging.info(" | ".join(values))
@@ -1221,6 +1273,7 @@ class TeamManager:
             logging.debug(
                 f"{name} - Weighted Score: {data['weighted_score']:.2f} | Projections Score: {data['projections_score']:.2f} | Ownership: {data['percent_owned']}%"
             )
+        suggested_replacements.sort(key=lambda x: x["improvement"], reverse=True)
 
         return suggested_replacements, close_replacements
 
@@ -1478,7 +1531,6 @@ if __name__ == "__main__":
         logging.info("Running regular script")
         # Regular logic here
         pass
-    # look_for_free_agents = True
     yApi = api.YahooApi(os.path.dirname(os.path.realpath(__file__)))
     manager = TeamManager(yApi, dry_run=False, cache=False)
     transactions = []
@@ -1526,7 +1578,7 @@ if __name__ == "__main__":
         for i in possible_adds:
             logging.info(f"{i['add']} - {i['drop']} - {i['improvement']:.2f} points")
 
-            # manager.perform_free_agent_add_drop(i["add"], i["drop"])
+            manager.perform_free_agent_add_drop(i["add"], i["drop"])
             transactions.append(f"Added {i['add']} and dropped {i['drop']}")
         team = manager.get_roster()
 

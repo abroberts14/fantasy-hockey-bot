@@ -205,6 +205,59 @@ class FantasyHockeyGoalieScraper:
         return all_players_stats
 
 
+class StartingGoalieScraper:
+    def __init__(self):
+        self.url = "https://www.sportsgrid.com/nhl/starting-goalies"
+        self.logger = logging.getLogger(__name__)  # Add logger
+        self.tree = None
+        self.response = None
+
+    def fetch_data(self):
+        """
+        Fetches data from the URL and parses it into an HTML tree.
+        Also initializes the headers dictionary.
+        """
+        print("init")
+        self.response = requests.get(self.url)
+        if self.response.status_code == 200:
+            self.tree = html.fromstring(self.response.content)
+        else:
+            print(f"failed to retrieve data: Status code {self.response.content}")
+            self.logger.info(f"Failed to retrieve data: Status code {self.response.status_code}")
+            self.tree = None
+
+    def get_starting_goalies(self, goalie_names):
+        """
+        Checks if given goalies are listed as starting.
+
+        Args:
+            goalie_names (list): List of goalie names to check
+
+        Returns:
+            dict: Dictionary with goalie names as keys and boolean values indicating if they're starting
+        """
+        self.fetch_data()  # Ensure we have fresh data
+        results = {}
+        if self.tree is None:
+            self.logger.info("No HTML tree available. Call fetch_data() first.")
+            return results
+
+        for full_name in goalie_names:
+            try:
+                # Format name to "S. Lastname"
+                first_name, last_name = full_name.split(" ", 1)
+                formatted_name = f"{first_name[0]}.{last_name}"
+
+                # Try different XPath approaches
+                found = self.tree.xpath(f"//*[contains(text(), '{formatted_name}')]")  # Partial match
+                results[full_name] = len(found) > 0
+            except Exception as e:
+                self.logger.error(f"Error searching for {full_name}: {e}")
+                results[full_name] = False
+
+        return results
+
+
 # scraper = FantasyHockeyGoalieScraper()
 # all_players_stats = scraper.fetch_all_time_periods()
 # print(all_players_stats)
