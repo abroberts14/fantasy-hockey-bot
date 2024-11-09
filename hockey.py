@@ -1106,6 +1106,7 @@ class TeamManager:
                 continue
 
             if player["isGoalie"]:
+                logging.info(f"Started Goalies in net today {goalies_playing_today_count}")
                 # Skip picking up or dropping a goalie if we already have two goalies with games today in the starting lineup
                 if goalies_playing_today_count >= 2:
                     if not data.get("game_today", False):
