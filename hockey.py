@@ -80,7 +80,8 @@ class TeamManager:
             self.previous_lineup = lineup
             self.active_players = active_players
             self.moves_left = moves_left
-
+            required_total, active_roster_count = self.get_required_and_active_roster_spots()
+            self.open_roster_spots = required_total - active_roster_count
             if self.roster is None or self.lineup is None or self.active_players is None or self.moves_left is None:
                 logging.info("Error loading roster or lineup not found, fetching from Yahoo API")
                 self.roster = []
@@ -127,9 +128,11 @@ class TeamManager:
         self.roster = team
 
         self.moves_left = int(self.yApi.max_moves) - int(self.yApi.team_data["roster_adds"]["value"])
+        required_total, active_roster_count = self.get_required_and_active_roster_spots()
+        self.open_roster_spots = required_total - active_roster_count
         logging.info(f"Moves left: {self.moves_left}")
         logging.info(f"Roster full: {self.is_roster_full()}")
-
+        logging.info(f"Open roster spots: {self.open_roster_spots}")
         if self.cache:
             with open(os.path.join(self.stats_dir, f"{self.today}_team.json"), "w") as f:
                 json.dump(self.roster, f)
@@ -231,6 +234,8 @@ class TeamManager:
         logging.info(f"Players to put on IL: {players_to_put_on_il}")
         if players_to_put_on_il:
             if not self.dry_run:
+                logging.info(f"Attempting to put {len(players_to_put_on_il)} players on IL")
+                logging.info(f"Players to put on IL: {players_to_put_on_il}")
                 self.yApi.team.change_positions(datetime.datetime.now(), players_to_put_on_il)
                 self.get_team(True)
 
@@ -697,6 +702,9 @@ class TeamManager:
         for position_players in self.lineup.values():
             for player in position_players:
                 if player["key"] not in used_player_keys:
+                    if player["current_position"] in self.inactive_positions:
+                        logging.info(f"{player['name']} is currently on the IL, skipping him for lineup calculations")
+                        continue
                     # Set the player's position to "BN" and add to the bench list
                     player["current_position"] = "BN"
                     logging.debug(f"Adding {player['name']} to the bench")
@@ -707,7 +715,7 @@ class TeamManager:
         calculated_lineup["BN"] = bench_players
 
         # Log final calculated lineup with all required positions filled, including bench
-        logging.debug(f"Final calculated lineup including bench: {calculated_lineup}")
+        logging.info(f"Final calculated lineup including bench: {calculated_lineup}")
         self.lineup = calculated_lineup
         original_lineup_payload = self.get_roster_update_payload_on_lineup(self.previous_lineup)
         new_lineup_payload = self.get_roster_update_payload_on_lineup(calculated_lineup)
@@ -717,7 +725,7 @@ class TeamManager:
 
         if not self.dry_run:
             # self.yApi.roster_payload_manager.fill_roster(calculated_lineup)
-            logging.debug(f"Payload: {new_lineup_payload}")
+            logging.info(f"Payload: {new_lineup_payload}")
             if len(new_lineup_payload) > 0 and new_lineup_payload != original_lineup_payload:
                 self.yApi.team.change_positions(datetime.datetime.now(), new_lineup_payload)
                 logging.info("Lineup changed")
@@ -738,15 +746,21 @@ class TeamManager:
                 )
         return payload
 
-    def get_players_by_position(self, roster):
+    def get_players_by_position(self):
         players_by_position = {}
 
         # Iterate through each player in the roster
-        for player in roster:
+        for player in self.roster:
+            if player["current_position"] in self.inactive_positions:
+                logging.info(f"{player['name']} is currently on the IL, skipping him for lineup calculations")
+                continue
             for position in player["available_positions"]:
                 # Add player to the list for each eligible position
+                logging.debug(f"Adding {player['name']} to {position}")
+
                 if position not in players_by_position:
                     players_by_position[position] = []
+
                 players_by_position[position].append(player)
         logging.debug(f"Players by position: {players_by_position["LW"]}")
         # Sort each list of players by points in descending order and game today status
@@ -771,7 +785,7 @@ class TeamManager:
                         -x["points"],
                     ),
                 )
-        logging.debug(f"Players by position: {players_by_position["LW"]}")
+        logging.debug(f"Players by position: {players_by_position}")
 
         return players_by_position
 
@@ -1540,11 +1554,12 @@ if __name__ == "__main__":
     logging.info("--------------------------------")
 
     manager.put_injured_players_on_il()
+
     manager.put_players_on_bench_from_inactive()
 
     logging.info("--------------------------------")
 
-    players_by_position = manager.get_players_by_position(team)
+    players_by_position = manager.get_players_by_position()
     swaps = manager.set_best_lineup(players_by_position)
 
     changes = manager.get_lineup_changes()
