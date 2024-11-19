@@ -217,7 +217,6 @@ class StartingGoalieScraper:
         Fetches data from the URL and parses it into an HTML tree.
         Also initializes the headers dictionary.
         """
-        print("init")
         self.response = requests.get(self.url)
         if self.response.status_code == 200:
             self.tree = html.fromstring(self.response.content)
@@ -256,6 +255,61 @@ class StartingGoalieScraper:
                 results[full_name] = False
 
         return results
+
+
+class PlayerComparisonScraper:
+    def __init__(self):
+        self.base_url = "https://www.fantasysp.com/trade-value-chart/nhl"
+        self.url = f"{self.base_url}?trade={{}}%3A1_for_{{}}&fp_p=1"
+        self.logger = logging.getLogger(__name__)
+        self.tree = None
+        self.response = None
+        self.player_1 = None
+        self.player_2 = None
+
+    def fetch_data(self):
+        """
+        Fetches data from the URL and parses it into an HTML tree.
+        Also initializes the headers dictionary.
+        """
+        self.url = self.url.format(self.player_1, self.player_2)
+        self.response = requests.get(self.url)
+        if self.response.status_code == 200:
+            self.tree = html.fromstring(self.response.content)
+        else:
+            print(f"failed to retrieve data: Status code {self.response.content}")
+            self.logger.info(f"Failed to retrieve data: Status code {self.response.status_code}")
+            self.tree = None
+
+    def compare_players(self, player1, player2):
+        """
+        Compares two players and returns the difference in value between the two players.
+
+        Args:
+            player1 (str): The first player to compare
+            player2 (str): The second player to compare
+
+        Returns:
+            dict: Dictionary with trade value and fpts difference between the two players
+        """
+
+        self.fetch_data()  # Ensure we have fresh data
+        results = {player1: {}, player2: {}}
+        if self.tree is None:
+            self.logger.info("No HTML tree available. Call fetch_data() first.")
+            return results
+
+        stat_rows = self.tree.xpath("//table[@id='ranks']//tbody//tr")
+        for idx, row in enumerate(stat_rows):
+            rank = row.xpath(".//td[2]").text_content().strip()
+            print(f"player_name: {player1} has rank of {rank}")
+        # results[player1]["rank"] = stat_rows[0].text_content().strip()
+
+        return results
+
+
+scraper = PlayerComparisonScraper()
+print(scraper.compare_players("Connor McDavid", "Leon Draisaitl"))
 
 
 # scraper = FantasyHockeyGoalieScraper()

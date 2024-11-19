@@ -66,6 +66,14 @@ class TeamManager:
         self.league_average_goalie_stats = {}
         self.league_average_skater_stats = {}
 
+    def update_roster_info(self):
+        self.moves_left = int(self.yApi.max_moves) - int(self.yApi.team_data["roster_adds"]["value"])
+        required_total, active_roster_count = self.get_required_and_active_roster_spots()
+        self.open_roster_spots = required_total - active_roster_count
+        logging.info(f"Moves left: {self.moves_left}")
+        logging.info(f"Roster full: {self.is_roster_full()}")
+        logging.info(f"Open roster spots: {self.open_roster_spots}")
+
     def get_team(self, force_refetch=False):
         team = self._load_or_fetch("team", None)
         if force_refetch:
@@ -87,14 +95,9 @@ class TeamManager:
                 self.roster = []
                 self.lineup = {}
                 self.active_players = []
-                self.moves_left = 0
+                self.update_roster_info()
             else:
-                required_total, active_roster_count = self.get_required_and_active_roster_spots()
-                self.open_roster_spots = required_total - active_roster_count
-                logging.info(f"Moves left: {self.moves_left}")
-                logging.info(f"Roster full: {self.is_roster_full()}")
-                logging.info(f"Open roster spots: {self.open_roster_spots}")
-
+                self.update_roster_info()
                 return team
         else:
             logging.info("No cached team or lineup found, fetching from Yahoo API")
@@ -127,12 +130,7 @@ class TeamManager:
         self.lineup = lineups
         self.roster = team
 
-        self.moves_left = int(self.yApi.max_moves) - int(self.yApi.team_data["roster_adds"]["value"])
-        required_total, active_roster_count = self.get_required_and_active_roster_spots()
-        self.open_roster_spots = required_total - active_roster_count
-        logging.info(f"Moves left: {self.moves_left}")
-        logging.info(f"Roster full: {self.is_roster_full()}")
-        logging.info(f"Open roster spots: {self.open_roster_spots}")
+        self.update_roster_info()
         if self.cache:
             with open(os.path.join(self.stats_dir, f"{self.today}_team.json"), "w") as f:
                 json.dump(self.roster, f)
@@ -206,7 +204,12 @@ class TeamManager:
     def put_injured_players_on_il(self):
         logging.info("Checking for inactive or injured players to put on IL")
         players_to_put_on_il = []
-
+        open_roster_positions = self.get_open_roster_positions()
+        injured_open_spots = open_roster_positions.get("IR", 0) + open_roster_positions.get("IR+", 0)
+        inactive_na_spots = open_roster_positions.get("NA", 0)
+        if injured_open_spots == 0 and inactive_na_spots == 0:
+            logging.info("No IR or NA spots available, skipping")
+            return
         for player in self.roster:
             player_name = player["name"]
             player_status = player["status"]
@@ -223,19 +226,29 @@ class TeamManager:
                     logging.debug(f"Player is eligible for inactive position {find_inactive_position_in_available_positions}")
 
                     if is_currently_in_inactive_position:
-                        logging.debug(f"Player {player_name} already positioned on {find_inactive_position_in_available_positions}, no need to put on IL")
-                    else:
-                        logging.info(f"Putting {player_name} on IL")
-                        players_to_put_on_il.append(
-                            {"player_id": player["key"].split(".")[2], "selected_position": find_inactive_position_in_available_positions}
+                        logging.info(
+                            f"Player {player_name} already positioned on {find_inactive_position_in_available_positions}, no need to put into {find_inactive_position_in_available_positions}"
                         )
+                    else:
+                        if find_inactive_position_in_available_positions == "NA":
+                            logging.info(f"Putting {player_name} on NA")
+                            if inactive_na_spots > 0:
+                                players_to_put_on_il.append({"player_id": player["key"].split(".")[2], "selected_position": "NA"})
+                        else:
+                            logging.info(f"Attempting to put {player_name} on {find_inactive_position_in_available_positions}")
+                            if injured_open_spots.get(find_inactive_position_in_available_positions, 0) > 0:
+                                players_to_put_on_il.append(
+                                    {"player_id": player["key"].split(".")[2], "selected_position": find_inactive_position_in_available_positions}
+                                )
+                            else:
+                                logging.info(f"No {find_inactive_position_in_available_positions} spots available, skipping")
                 else:
                     logging.debug(f"Player {player_name} is not eligible for IL")
         logging.info(f"Players to put on IL: {players_to_put_on_il}")
         if players_to_put_on_il:
             if not self.dry_run:
-                logging.info(f"Attempting to put {len(players_to_put_on_il)} players on IL")
-                logging.info(f"Players to put on IL: {players_to_put_on_il}")
+                logging.info(f"Attempting to put {len(players_to_put_on_il)} players onto inactives")
+                logging.info(f"Players: {players_to_put_on_il}")
                 self.yApi.team.change_positions(datetime.datetime.now(), players_to_put_on_il)
                 self.get_team(True)
 
@@ -247,21 +260,52 @@ class TeamManager:
             player_name = player["name"]
             player_status = player["status"]
             player_current_position = player["current_position"]
+            players_top_position = player["available_positions"][0]
             # logging.info(f"Player status: {player_status} - Current position: {player_current_position}")
             has_inactive_status = player_status in self.not_playing_statuses
             is_in_inactive_position = player_current_position in self.inactive_positions
-
+            # player_rank = self.find_player_in_ranks(player_name, "taken", "season")
             if not has_inactive_status and is_in_inactive_position:
                 if self.is_roster_full():
-                    logging.debug(f"Roster is full, unable move to bench for {player_name}")
-                else:
-                    logging.info(f"Player {player_name} is no longer inactive and is currently in an inactive position.")
-                    player["current_position"] = "BN"
-                    logging.info(f"Moving {player_name} from {player_current_position} to BN")
-                    players_to_bench.append({"player_id": player["key"].split(".")[2], "new_position": "BN"})
-            else:
-                if has_inactive_status and is_in_inactive_position:
-                    logging.debug(f"Player {player_name} is still inactive and listed as inactive. No change needed.")
+                    worst_active_players = list(reversed(self.roster))
+                    player_rank_data = self.find_player_in_ranks(player_name, "taken", "lastmonth")
+                    logging.info(f"Player rank data: {player_rank_data}")
+                    player_rank = player_rank_data[1].get("rank", 0)
+                    for active_player in worst_active_players:
+                        name = active_player.get("name")
+                        current_active_player = self.find_player_in_roster(name)
+                        if self.is_player_injured(name):
+                            continue
+
+                        if current_active_player["locked"]:
+                            logging.info(f"{name} is locked, skipping")
+                            continue
+
+                        active_player_top_position = current_active_player["available_positions"][0]
+                        if active_player_top_position == players_top_position:
+                            current_active_player_ownership = current_active_player["percent_owned"]
+                            logging.info(f"Current {name} ownership: {current_active_player_ownership} vs {player_name} ownership: {player['percent_owned']}")
+
+                            current_active_player_rank = self.find_player_in_ranks(name, "taken", "lastmonth")[1].get("rank", 0)
+
+                            logging.info(f"Current {name} rank: {current_active_player_rank} vs {player_name} rank: {player_rank}")
+                            if player_rank < current_active_player_rank:
+                                if player["percent_owned"] < current_active_player_ownership:
+                                    logging.info(f"Player {name} is ranked higher than {player_name}, we need to drop {player_name} for {name}")
+                                    logging.info(
+                                        f"Player {name} ownership: {current_active_player_ownership} vs {player_name} ownership: {player['percent_owned']}"
+                                    )
+                                    logging.info(f"Dropping {player_name}")
+                                    self.add_and_drop_players(None, player_name)
+
+                                    players_to_bench.append({"player_id": player["key"].split(".")[2], "selected_position": "BN"})
+                                    player["current_position"] = "BN"
+
+                                    break
+                                else:
+                                    logging.info(f"Player {player_name} seems to be better than {name}, we need to drop {name} from our IL ")
+
+                logging.info(f"Player {player_name} is no longer inactive and is currently in an inactive position.")
 
         logging.info(f"Total players moved to bench from IL: {len(players_to_bench)}")
         if players_to_bench:
@@ -1037,6 +1081,13 @@ class TeamManager:
         p = self.league_statistics[location].get(player_name, {})
         return p.get(time_period, "")
 
+    def find_player_in_ranks(self, player_name, location, time_period):
+        p = self.league_rankings[location].get(time_period, {})
+        for player in p:
+            if player_name in player:
+                return player
+        return None
+
     def is_player_injured(self, player_name):
         player = self.find_player_in_roster(player_name)
         if player:
@@ -1381,11 +1432,25 @@ class TeamManager:
                 logging.info(f"Adding {name}")
                 self.yApi.team.add_and_drop_players(selected_player["player_id"], player_to_drop_details[0]["player_id"])
                 self.get_team(True)
+                self.update_roster_info()
             else:
                 self.yApi.team.add_player(selected_player["player_id"])
                 self.get_team(True)
+                self.update_roster_info()
         else:
             logging.info(f"Cannot add {name} due to unmet positional needs")
+
+    def add_and_drop_player(self, player_to_add, player_to_drop):
+        if player_to_drop:
+            if player_to_add:
+                self.yApi.team.add_and_drop_players(player_to_add["player_id"], player_to_drop["player_id"])
+            else:
+                self.yApi.team.drop_player(player_to_drop["player_id"])
+        else:
+            if player_to_add:
+                self.yApi.team.add_player(player_to_add["player_id"])
+
+        self.update_roster_info()
 
     def handle_necessary_adds(self):
         # Check if there are available moves or open roster spots
@@ -1463,6 +1528,29 @@ class TeamManager:
 
         logging.info(f"Total shortages found: {len(shortages)}")
         return shortages
+
+    def get_open_roster_positions(self):
+        required_positions = self.yApi.league_positions
+
+        required_inactive_positions = {
+            "IR": required_positions["IR"]["count"],
+            "IR+": required_positions["IR+"]["count"],
+            "NA": required_positions["NA"]["count"],
+        }
+        roster_positions = {pos: 0 for pos in required_inactive_positions}
+
+        # Simulate roster data based on your description
+        for player in self.roster:
+            for position in player["available_positions"]:
+                if position in roster_positions:
+                    roster_positions[position] += 1
+                    logging.debug(f"Counted position {position} for {player['name']}")
+
+        # Calculate the remaining open positions
+        open_positions = {pos: required_inactive_positions[pos] - count for pos, count in roster_positions.items()}
+        logging.info(f"Open roster positions: {open_positions}")
+
+        return open_positions
         # Helper function to load or fetch data
 
     def get_league_ranks_by_time_period(self, time_period, location, roster_only=False, position_type="both"):
@@ -1554,9 +1642,12 @@ if __name__ == "__main__":
 
     logging.info("--------------------------------")
 
-    manager.put_injured_players_on_il()
+    manager.fetch_players_stats()
+    manager.set_league_rankings()
 
     manager.put_players_on_bench_from_inactive()
+
+    manager.put_injured_players_on_il()
 
     logging.info("--------------------------------")
 
@@ -1570,9 +1661,6 @@ if __name__ == "__main__":
 
     # Resync roster to latest
     team = manager.get_roster()
-
-    manager.fetch_players_stats()
-    manager.set_league_rankings()
 
     logging.info("--------------------------------")
 
@@ -1599,7 +1687,7 @@ if __name__ == "__main__":
         team = manager.get_roster()
 
         if len(possible_adds) > 0:
-            players_by_position = manager.get_players_by_position(team)
+            players_by_position = manager.get_players_by_position()
             new_swaps = manager.set_best_lineup(players_by_position)
             changes = manager.get_lineup_changes()
             transactions.extend(changes)
@@ -1616,7 +1704,7 @@ if __name__ == "__main__":
     pos = "G"
     name_to_check = "Nikita Kucherov"
 
-    lastweek = manager.get_league_ranks_by_time_period("lastweek", "taken", roster_only=False, position_type=pos)
+    lastweek = manager.get_league_ranks_by_time_period("lastweek", "free_agents", roster_only=False, position_type=pos)
     lastmonth = manager.get_league_ranks_by_time_period("lastmonth", "free_agents", roster_only=False, position_type=pos)
     season = manager.get_league_ranks_by_time_period("season", "free_agents", roster_only=False, position_type=pos)
 
@@ -1626,52 +1714,3 @@ if __name__ == "__main__":
         logging.info(
             f"{name} - weighted {data['weighted_score']:.2f} - score {data['score']:.2f} - advanced {data['advanced_score']:.2f} - projections {data['projections_score']:.2f}"
         )
-
-    # logging.info("--------------------------------")
-    # logging.info("Last month")
-    # for name, data in lastmonth[:15]:
-    #     logging.info(f"{name} - {data['weighted_score']}")
-
-    # logging.info("--------------------------------")
-    # logging.info("Season")
-    # for name, data in season[:15]:
-    #     logging.info(f"{name} weighted score: {data['weighted_score']}")
-
-    # tm = "Washington Capitals"
-    # next_g = manager.yApi.team_next_game(tm)
-    # logging.info(f"next game {next_g}")
-
-    # s = manager.today == next_g if next_g else False
-    # logging.info(s)
-    # for name, data in lastweek:
-    #     if name == name_to_check:
-    #         logging.info(f"{name} last week weighted score: {data['weighted_score']}")
-    #         logging.info(f"{name} last week score: {data['score']}")
-    #         logging.info(f"{name} last week advanced score: {data['advanced_score']}")
-    #         logging.info(f"{name} last week projections score: {data['projections_score']}")
-
-    # logging.info("--------------------------------")
-    # for name, data in lasttwoweeks:
-    #     if name == name_to_check:
-    #         logging.info(f"{name} last two weeks weighted score: {data['weighted_score']}")
-    #         logging.info(f"{name} last two weeks score: {data['score']}")
-    #         logging.info(f"{name} last two weeks advanced score: {data['advanced_score']}")
-    #         logging.info(f"{name} last two weeks projections score: {data['projections_score']}")
-
-    # logging.info("--------------------------------")
-
-    # for name, data in lastmonth:
-    #     if name == name_to_check:
-    #         logging.info(f"{name} last month weighted score: {data['weighted_score']}")
-    #         logging.info(f"{name} last month score: {data['score']}")
-    #         logging.info(f"{name} last month advanced score: {data['advanced_score']}")
-    #         logging.info(f"{name} last month projections score: {data['projections_score']}")
-
-    # logging.info("--------------------------------")
-
-    # for name, data in season:
-    #     if name == name_to_check:
-    #         logging.info(f"{name} season weighted score: {data['weighted_score']}")
-    #         logging.info(f"{name} season score: {data['score']}")
-    #         logging.info(f"{name} season advanced score: {data['advanced_score']}")
-    #         logging.info(f"{name} season projections score: {data['projections_score']}")
