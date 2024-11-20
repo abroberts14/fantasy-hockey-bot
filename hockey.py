@@ -6,7 +6,7 @@ from collections import OrderedDict
 from itertools import product
 import os
 import json
-import math
+import sys
 import yahoo.api as api
 import argparse
 from util.parse import FantasyHockeyProjectionScraper, FantasyHockeyGoalieScraper, StartingGoalieScraper
@@ -1382,6 +1382,13 @@ class TeamManager:
 
         return free_agent_skaters_by_period
 
+    def enough_moves_left_by_day(self):
+        day_thresholds = {"Monday": 3, "Tuesday": 3, "Wednesday": 2, "Thursday": 2, "Friday": 1, "Saturday": 1, "Sunday": 1}
+        current_day = datetime.datetime.now().strftime("%A")
+        required_moves = day_thresholds[current_day]
+
+        return self.moves_left >= required_moves
+
     def perform_free_agent_add_drop(self, player_to_add, player_to_drop):
         if self.moves_left <= 0:
             logging.info("Cannot add player due to lack of moves")
@@ -1708,7 +1715,10 @@ if __name__ == "__main__":
     team = manager.get_roster()
 
     logging.info("--------------------------------")
-
+    if not manager.enough_moves_left_by_day():
+        current_day = datetime.datetime.now().strftime("%A")
+        logging.info(f"Only have {manager.moves_left} on {current_day} - skipping any roster adds")
+        sys.exit(0)
     if not manager.is_roster_full():
         manager.handle_necessary_adds()
     else:
