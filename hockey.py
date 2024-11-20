@@ -236,7 +236,7 @@ class TeamManager:
                                 players_to_put_on_il.append({"player_id": player["key"].split(".")[2], "selected_position": "NA"})
                         else:
                             logging.info(f"Attempting to put {player_name} on {find_inactive_position_in_available_positions}")
-                            if injured_open_spots.get(find_inactive_position_in_available_positions, 0) > 0:
+                            if injured_open_spots > 0:
                                 players_to_put_on_il.append(
                                     {"player_id": player["key"].split(".")[2], "selected_position": find_inactive_position_in_available_positions}
                                 )
