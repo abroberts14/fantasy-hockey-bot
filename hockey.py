@@ -207,7 +207,7 @@ class TeamManager:
         open_roster_positions = self.get_open_roster_positions()
         injured_open_spots = open_roster_positions.get("IR", 0) + open_roster_positions.get("IR+", 0)
         inactive_na_spots = open_roster_positions.get("NA", 0)
-        if injured_open_spots == 0 and inactive_na_spots == 0:
+        if injured_open_spots <= 0 and inactive_na_spots <= 0:
             logging.info("No IR or NA spots available, skipping")
             return
         for player in self.roster:
@@ -1386,6 +1386,9 @@ class TeamManager:
         if self.moves_left <= 0:
             logging.info("Cannot add player due to lack of moves")
             return
+        if self.dry_run:
+            logging.info(f"Dry run: Adding {player_to_add} and dropping {player_to_drop}")
+            return
         shortages = self.identify_positional_shortages()
 
         name = player_to_add
@@ -1430,10 +1433,16 @@ class TeamManager:
                     return
                 logging.info(f"Dropping {player_to_drop} id {player_to_drop_details[0]['player_id']}")
                 logging.info(f"Adding {name}")
+                if self.dry_run:
+                    logging.info("Dry run: Would have added and dropped players")
+                    return
                 self.yApi.team.add_and_drop_players(selected_player["player_id"], player_to_drop_details[0]["player_id"])
                 self.get_team(True)
                 self.update_roster_info()
             else:
+                if self.dry_run:
+                    logging.info("Dry run: Would have added player")
+                    return
                 self.yApi.team.add_player(selected_player["player_id"])
                 self.get_team(True)
                 self.update_roster_info()
@@ -1441,6 +1450,9 @@ class TeamManager:
             logging.info(f"Cannot add {name} due to unmet positional needs")
 
     def add_and_drop_player(self, player_to_add, player_to_drop):
+        if self.dry_run:
+            logging.info(f"Dry run: Adding {player_to_add} and dropping {player_to_drop}")
+            return
         if player_to_drop:
             if player_to_add:
                 self.yApi.team.add_and_drop_players(player_to_add["player_id"], player_to_drop["player_id"])
@@ -1452,6 +1464,12 @@ class TeamManager:
 
         self.update_roster_info()
 
+    def get_team_position_count_by_position(self, position):
+        logging.info(f"Counting players for position: {position}")
+        count = sum(1 for player in self.roster if position == player["current_position"] and (player["available_positions"] not in self.inactive_positions))
+        logging.info(f"Found {count} players for position {position}")
+        return count
+
     def handle_necessary_adds(self):
         # Check if there are available moves or open roster spots
         if self.moves_left == 0:
@@ -1460,7 +1478,6 @@ class TeamManager:
         if self.open_roster_spots == 0:
             logging.info("No open roster spots, cannot add any players")
             return
-
         # Identify positional shortages
         shortages = self.identify_positional_shortages()
         for shortage in shortages:
@@ -1475,8 +1492,13 @@ class TeamManager:
             for name, data in fa_skaters[period]:
                 logging.info(f"{name} - {data['rank']} - {data['on_current_roster']}")
 
-        players_to_add = []
-        free_agents = fa_skaters["lastweek"] + fa_goalies["lastweek"]
+        goalie_count = self.get_team_position_count_by_position("G")
+        if goalie_count >= 2:
+            free_agents = fa_skaters["lastweek"]
+        else:
+            free_agents = fa_skaters["lastweek"] + fa_goalies["lastweek"]
+
+        player_to_add = ""
         # Iterate through the best free agent skaters of the last week
         for name, data in free_agents:
             # Find player's data in last month rankings
@@ -1486,20 +1508,30 @@ class TeamManager:
 
             last_month_rank = last_month_data["rank"] if last_month_data else "Not ranked"
             season_rank = season_data["rank"] if season_data else "Not ranked"
+            game_today = data["game_today"]
+            threshold_map = {"game_today": {0: 100, 1: 3.75, 2: 3.50, 3: 3.25, 4: 3.00}, "no_game": {0: 100, 1: 4.50, 2: 3.75, 3: 3.25, 4: 3.00}}
+
+            threshold = threshold_map["no_game" if not game_today else "game_today"][min(self.moves_left, 4)]
 
             logging.info(f"Evaluating {name}:  " f"Rank Among FA | Last week: {data['rank']} | Last Month: {last_month_rank} | Season: {season_rank}| ")
-            if self.moves_left - len(players_to_add) <= 0 or self.open_roster_spots - len(players_to_add) <= 0:
-                logging.info("Breaking free agent search due to lack of moves or open spots")
+            logging.info(f"Weighted Score: {data['weighted_score']:.2f} | Owned: {data['percent_owned']}%")
+            # if self.moves_left < 1 or self.open_roster_spots < 1:
+            #     logging.info("Breaking free agent search due to lack of moves or open spots")
+            #     break
+            if data["weighted_score"] > threshold:
+                logging.info(f"Adding {name} - {data['weighted_score']:.2f}")
+                player_to_add = f"{name} - {data['weighted_score']:.2f}"
+                self.perform_free_agent_add_drop(player_to_add, None)
                 break
-
-            self.perform_free_agent_add_drop(name, None)
+            else:
+                logging.info(f"Skipping {name} - {data['weighted_score']:.2f} due to weighted score below threshold")
         # Summary logging
         logging.info("--------------------------------")
         logging.info(f"Total season: {len(fa_skaters['season'])}")
         logging.info(f"Total last month: {len(fa_skaters['lastmonth'])}")
         logging.info(f"Total last week: {len(fa_skaters['lastweek'])}")
         logging.info("--------------------------------")
-        logging.info(f"Players to add: {len(players_to_add)}")
+        logging.info(f"Players to add: {player_to_add}")
 
     def identify_positional_shortages(self):
         required_positions = self.yApi.league_positions
@@ -1520,7 +1552,7 @@ class TeamManager:
                 continue
             required_count = pos_info.get("count", 0)
             current_count = roster_positions[pos]
-            logging.debug(f"Position {pos}: Have {current_count}, Need {required_count}")
+            logging.info(f"Position {pos}: Have {current_count}, Need {required_count}")
 
             if current_count < required_count:
                 shortages.append((pos, "Insufficient players", current_count, "Positional shortage"))
@@ -1531,26 +1563,39 @@ class TeamManager:
 
     def get_open_roster_positions(self):
         required_positions = self.yApi.league_positions
+        logging.info("Checking open roster positions...")
 
         required_inactive_positions = {
             "IR": required_positions["IR"]["count"],
             "IR+": required_positions["IR+"]["count"],
             "NA": required_positions["NA"]["count"],
         }
-        roster_positions = {pos: 0 for pos in required_inactive_positions}
+        logging.debug(f"Required inactive positions: {required_inactive_positions}")
 
-        # Simulate roster data based on your description
+        roster_positions = {pos: 0 for pos in required_inactive_positions}
+        logging.debug(f"Initialized roster positions counter: {roster_positions}")
+        # Count current roster positions
         for player in self.roster:
+            logging.debug(f"\nProcessing player: {player['name']}")
+            logging.debug(f"Available positions: {player['available_positions']}")
+            logging.debug(f"Current position: {player['current_position']}")
+
             for position in player["available_positions"]:
                 if position in roster_positions:
                     roster_positions[position] += 1
-                    logging.debug(f"Counted position {position} for {player['name']}")
+                    logging.debug(f"Counted {position} for {player['name']} - New count: {roster_positions[position]}")
+                else:
+                    logging.debug(f"Skipped position {position} - not an inactive position")
 
         # Calculate the remaining open positions
         open_positions = {pos: required_inactive_positions[pos] - count for pos, count in roster_positions.items()}
-        logging.info(f"Open roster positions: {open_positions}")
+        logging.debug("\nFinal counts:")
+        logging.info(f"Current roster position counts: {roster_positions}")
+        logging.info(f"League allowed inactive positions: {required_inactive_positions}")
+        logging.info(f"Openings: {open_positions}")
 
         return open_positions
+
         # Helper function to load or fetch data
 
     def get_league_ranks_by_time_period(self, time_period, location, roster_only=False, position_type="both"):
