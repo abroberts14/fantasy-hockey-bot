@@ -197,7 +197,14 @@ class TeamManager:
             if player["key"] not in used_players:
                 lineup[position] = player
                 if player["next_game"] == self.today:
-                    total_points += player["points"]
+                    player_has_inactive = next((pos for pos in self.inactive_positions if pos in player["available_positions"]), None)
+                    # prioritize guys like so:
+                    # 1. guys got a game, not DTD, use his full points
+                    # 2. guys got a game, may be DTD, only add 1 point so it scores higher than guys with no game today but less than healthy
+                    # 3. guys got not game
+                    points_to_add = player["points"] if not player_has_inactive else 1
+                    total_points += points_to_add
+
                 used_players.add(player["key"])
         return lineup, total_points
 
@@ -207,6 +214,8 @@ class TeamManager:
         open_roster_positions = self.get_open_roster_positions()
         injured_open_spots = open_roster_positions.get("IR", 0) + open_roster_positions.get("IR+", 0)
         inactive_na_spots = open_roster_positions.get("NA", 0)
+        logging.info(f"Injured open spots: {injured_open_spots}")
+        logging.info(f"Inactive NA spots: {inactive_na_spots}")
         if injured_open_spots <= 0 and inactive_na_spots <= 0:
             logging.info("No IR or NA spots available, skipping")
             return
@@ -800,6 +809,9 @@ class TeamManager:
                 continue
             for position in player["available_positions"]:
                 # Add player to the list for each eligible position
+                if position in self.inactive_positions:
+                    logging.info(f"{player['name']} is currently on starting roster but inactive, not using the inactive position")
+                    continue
                 logging.debug(f"Adding {player['name']} to {position}")
 
                 if position not in players_by_position:
@@ -1409,12 +1421,15 @@ class TeamManager:
         except Exception as e:
             logging.warning(f"Failed to get player details for {name}: {e}")
             return
-
+        logging.info(f"Player details: {player_details}")
         # Select the appropriate player from details
         selected_player = None
         if len(player_details) > 1:
+            logging.info(f"Multiple players found for {name}: {player_details}")
             selected_player = next((p for p in player_details if p["name"]["full"] == name), None)
+            logging.info(f"Selected player: {selected_player}")
         elif player_details:
+            logging.info(f"Single player found for {name}: {player_details[0]}")
             selected_player = player_details[0]
 
         if not selected_player:
@@ -1516,7 +1531,7 @@ class TeamManager:
             last_month_rank = last_month_data["rank"] if last_month_data else "Not ranked"
             season_rank = season_data["rank"] if season_data else "Not ranked"
             game_today = data["game_today"]
-            threshold_map = {"game_today": {0: 100, 1: 3.75, 2: 3.50, 3: 3.25, 4: 3.00}, "no_game": {0: 100, 1: 4.50, 2: 3.75, 3: 3.25, 4: 3.00}}
+            threshold_map = {"game_today": {0: 100, 1: 4.0, 2: 3.75, 3: 3.5, 4: 3.25}, "no_game": {0: 100, 1: 5.0, 2: 4.25, 3: 3.75, 4: 3.5}}
 
             threshold = threshold_map["no_game" if not game_today else "game_today"][min(self.moves_left, 4)]
 
@@ -1528,7 +1543,7 @@ class TeamManager:
             if data["weighted_score"] > threshold:
                 logging.info(f"Adding {name} - {data['weighted_score']:.2f}")
                 player_to_add = f"{name} - {data['weighted_score']:.2f}"
-                self.perform_free_agent_add_drop(player_to_add, None)
+                self.perform_free_agent_add_drop(name, None)
                 break
             else:
                 logging.info(f"Skipping {name} - {data['weighted_score']:.2f} due to weighted score below threshold")
@@ -1573,10 +1588,10 @@ class TeamManager:
         logging.info("Checking open roster positions...")
 
         required_inactive_positions = {
-            "IR": required_positions["IR"]["count"],
-            "IR+": required_positions["IR+"]["count"],
+            "IR+": required_positions["IR+"]["count"] + required_positions["IR"]["count"],
             "NA": required_positions["NA"]["count"],
         }
+
         logging.debug(f"Required inactive positions: {required_inactive_positions}")
 
         roster_positions = {pos: 0 for pos in required_inactive_positions}
@@ -1686,6 +1701,7 @@ if __name__ == "__main__":
         logging.info("Running regular script")
         # Regular logic here
         pass
+
     yApi = api.YahooApi(os.path.dirname(os.path.realpath(__file__)))
     manager = TeamManager(yApi, dry_run=False, cache=False)
     transactions = []
