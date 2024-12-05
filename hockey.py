@@ -284,7 +284,14 @@ class TeamManager:
                         name = active_player.get("name")
                         current_active_player = self.find_player_in_roster(name)
                         if self.is_player_injured(name):
-                            continue
+                            logging.info(f"{name} is injured")
+                            if current_active_player["current_position"] not in self.inactive_positions:
+                                logging.info(f"{name} is in injured but in starting lineup, lets swap him out")
+                                players_to_bench.append({"player_id": current_active_player["key"].split(".")[2], "selected_position": "IR+"})
+                                players_to_bench.append({"player_id": player["key"].split(".")[2], "selected_position": "BN"})
+                                player["current_position"] = "BN"
+                                current_active_player["current_position"] = "IR+"
+                                break
 
                         if current_active_player["locked"]:
                             logging.info(f"{name} is locked, skipping")
@@ -316,7 +323,7 @@ class TeamManager:
 
                 logging.info(f"Player {player_name} is no longer inactive and is currently in an inactive position.")
 
-        logging.info(f"Total players moved to bench from IL: {len(players_to_bench)}")
+        logging.info(f"Total players attempting to move to bench from IL: {len(players_to_bench)}")
         if players_to_bench:
             if not self.dry_run:
                 self.yApi.team.change_positions(datetime.datetime.now(), players_to_bench)
