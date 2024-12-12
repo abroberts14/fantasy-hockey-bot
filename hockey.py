@@ -1709,6 +1709,9 @@ if __name__ == "__main__":
         # Regular logic here
         pass
 
+    import sys
+
+    sys.exit(0)
     yApi = api.YahooApi(os.path.dirname(os.path.realpath(__file__)))
     manager = TeamManager(yApi, dry_run=False, cache=False)
     transactions = []
