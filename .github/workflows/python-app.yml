@@ -52,8 +52,8 @@ jobs:
 
         if [[ $current_minute -lt 15 ]]; then
           echo "Running free agents script"
-          ./hockey.py --free-agents
+          ./manager.py --free-agents
         else
           echo "Running regular script"
-          ./hockey.py
+          ./manager.py
         fi
