@@ -41,8 +41,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    - name: Make hockey.py executable
-      run: chmod +x hockey.py
+    - name: Make manager.py executable
+      run: chmod +x manager.py
     - name: Create directory for token storage
       run: mkdir -p /home/runner/work/fantasy-hockey-bot/fantasy-hockey-bot/tokens/
     - name: Run Hockey Bot
