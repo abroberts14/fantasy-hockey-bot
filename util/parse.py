@@ -308,10 +308,6 @@ class PlayerComparisonScraper:
         return results
 
 
-scraper = PlayerComparisonScraper()
-print(scraper.compare_players("Connor McDavid", "Leon Draisaitl"))
-
-
 # scraper = FantasyHockeyGoalieScraper()
 # all_players_stats = scraper.fetch_all_time_periods()
 # print(all_players_stats)

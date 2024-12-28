@@ -39,8 +39,11 @@ NHL_TEAM_ID = {
     "Columbus Blue Jackets": "CBJ",
     "Minnesota Wild": "MIN",
     "Winnipeg Jets": "WPG",
-    "Arizona Coyotes": "ARI",
     "Vegas Golden Knights": "VGK",
     "Seattle Kraken": "SEA",
     "Utah Hockey Club": "UTA",
 }
+
+LOCATION_TAKEN = "taken"
+LOCATION_FREE_AGENT = "free_agents"
+LOCATION_ROSTER = "roster"

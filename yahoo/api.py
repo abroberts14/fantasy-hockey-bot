@@ -33,7 +33,6 @@ class YahooApi:
         self.team_key = f"{self.league_key}.t.{self.credentials['team_id']}"
         try:
             # Create game object for NHL
-            self.sc.refresh_access_token()
             self.credentials["access_token"] = self.sc.access_token
             self.credentials["refresh_token"] = self.sc.refresh_token
             self.logger.info(f"isToken Valid: {self.sc.token_is_valid()}")
@@ -49,8 +48,12 @@ class YahooApi:
             self.inverse_league_stats = ["L", "GA", "GAA"]
             self.skater_categories = [cat["display_name"] for cat in self.league_categories if cat["position_type"] == "P"]
             self.goalie_categories = [cat["display_name"] for cat in self.league_categories if cat["position_type"] == "G"]
+
+            self.inactive_positions = ["IR+", "IL", "NA", "IR", "IR-LT"]
+            self.not_playing_statuses = ["DTD", "O", "IR-LT"]
             self.team_data = self.league.teams()[self.team_key]
             self.logger.info("Successfully initialized Yahoo Fantasy objects")
+            self.sc.session = self.sc.oauth.get_session(token=self.sc.access_token)
         except Exception as e:
             self.logger.error(f"Failed to initialize Yahoo Fantasy objects: {str(e)}")
             raise
@@ -59,7 +62,7 @@ class YahooApi:
         try:
             credentials = self.config.getCredentials()
             credentials["token_type"] = "bearer"
-            credentials["token_time"] = 1699999999
+            credentials["token_time"] = 1731023668
             credentials["guid"] = None
             with open(self.oauth_file, "w") as f:
                 f.write(json.dumps(credentials))
@@ -171,10 +174,6 @@ class YahooApi:
 
         url = NEXT_GAME_URL % NHL_TEAM_ID[player["team"]]
         # logging.info("Next game url: %s" % url)
-        response = requests.get(url)
-        nextGame = json.loads(response.content)
-        # logging.info("Next game: %s" % nextGame)
-        player["next_game"] = nextGame["games"][0]["gameDate"]
 
         return player
 
