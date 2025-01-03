@@ -73,11 +73,14 @@ class RosterLineup:
                 if player.game_today:
                     if player.must_start:
                         # Use the higher of the two scores (season vs last week)
-                        weighted_score = max(
-                            player.rankings[self.league.time_periods[2]]["weighted_score"],  # Season
-                            player.rankings[self.league.time_periods[0]]["weighted_score"],  # Last week
-                            player.unified_score,
-                        )
+                        try:
+                            weighted_score = max(
+                                player.rankings[self.league.time_periods[2]]["weighted_score"],  # Season
+                                player.rankings[self.league.time_periods[0]]["weighted_score"],  # Last week
+                                player.unified_score,
+                            )
+                        except Exception as e:
+                            weighted_score = 0.01
                     else:
                         # Default to season score
                         weighted_score = max(player.unified_score, 0.01)

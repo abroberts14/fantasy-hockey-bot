@@ -78,11 +78,18 @@ class Manager:
         # cache.save_object(self.roster, "roster")
 
         # self.roster.set_lineup()
-
         self.roster.move_player_to_bench_from_inactive()
         self.roster.move_injured_players_to_inactive()
 
+        if not self.roster.is_full():
+            if self.enough_moves_left():
+                self.roster.add_best_free_agent()
+            else:
+                self.logger.info("Not enough moves left at this point in the week, skipping free agent addition")
+        self.sync_roster_and_league()
+
         self.roster.set_lineup()
+
         # if len(self.roster.change_position_payload) > 0:
         #     self.logger.info(f"Applying lineup changes for injured players: {len(self.roster.change_position_payload)}")
         #     self.roster.apply_lineup_changes()
@@ -129,12 +136,6 @@ class Manager:
 
     def get_best_lineup(self):
         self.roster.lineup.calculate_best_lineup()
-
-    def add_free_agents_if_roster_spot_available(self):
-        free_agents = self.roster.find_free_agents_by_positions(["C", "LW", "RW", "D"])
-        self.logger.info(f"Free Agents: {len(free_agents)}")
-        for player in free_agents:
-            self.logger.info(f"{player}")
 
     def enough_moves_left(self):
         return self.roster.moves_left >= self.get_required_moves_based_on_day()

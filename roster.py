@@ -128,11 +128,14 @@ class Roster:
         required_positions = self.league.league_positions
         logging.debug("Checking open roster positions...")
         self.logger.info(f"Required positions: {required_positions}")
-        required_inactive_positions = {
-            "IR+": required_positions["IR+"]["count"] + required_positions["IR"]["count"],
-            "NA": required_positions["NA"]["count"],
-        }
 
+        # Initialize required positions dictionary with all positions
+        required_inactive_positions = {pos: data["count"] for pos, data in required_positions.items()}
+        # Combine IR and IR+ counts
+        if "IR" in required_inactive_positions and "IR+" in required_inactive_positions:
+            required_inactive_positions["IR+"] += required_inactive_positions.pop("IR")
+
+        # Initialize counts for all positions
         roster_positions = {pos: 0 for pos in required_inactive_positions}
         # Count current roster positions
         for player in self.players:
@@ -157,10 +160,13 @@ class Roster:
             self.get_roster()
 
     def add_and_drop_player(self, player_to_add, player_to_drop):
-        self.yahoo_api.team.add_and_drop_players(player_to_add.player_id, player_to_drop.player_id)
+        if player_to_drop:
+            self.yahoo_api.team.add_and_drop_players(player_to_add.player_id, player_to_drop.player_id)
+        else:
+            self.yahoo_api.team.add_player(player_to_add.player_id)
         self.get_roster()
 
-    def find_free_agents_by_positions(self, positions):
+    def find_free_agents_by_positions(self, positions, playing_today=False):
         free_agents = []
         for player in self.league.players["free_agents"]:
             if any(pos in player.eligible_positions for pos in positions):
@@ -176,8 +182,16 @@ class Roster:
             projected_rank_adjusted = projected_rank / 1000
             last_week_adjusted = free_agent.rankings[self.league.time_periods[0]]["weighted_score"] - projected_rank_adjusted
             season_adjusted = free_agent.rankings[self.league.time_periods[2]]["weighted_score"] - projected_rank_adjusted
-
-            filtered_free_agents.append(free_agent)
+            is_goalie = "G" in free_agent.eligible_positions
+            if playing_today or is_goalie:
+                if is_goalie:
+                    if free_agent.starting_behind_net:
+                        filtered_free_agents.append(free_agent)
+                else:
+                    if free_agent.game_today:
+                        filtered_free_agents.append(free_agent)
+            else:
+                filtered_free_agents.append(free_agent)
         return filtered_free_agents[:7]
 
     def find_replacement_players(self, player):
@@ -234,6 +248,29 @@ class Roster:
         # Sort by drop score, highest first
         res.sort(key=lambda x: x[1], reverse=True)
         return list(res)
+
+    def add_best_free_agent(self):
+        open_positions = self.get_open_roster_positions()
+        find_players_playing_today = self.moves_left < 2
+        # Check for specific position needs first
+        position_priorities = ["G", "D"]
+        free_agents = []
+        for position in position_priorities:
+            if open_positions.get(position, 0) > 0:
+                self.logger.info(f"Adding best free agent for {position}")
+                free_agents = self.find_free_agents_by_positions([position], find_players_playing_today)
+                break
+
+        # If no specific position needs, look for best available skater
+        if len(free_agents) == 0:
+            self.logger.info("Adding best free agent skater")
+            free_agents = self.find_free_agents_by_positions(["C", "LW", "RW", "D"], find_players_playing_today)
+
+        self.logger.info(f"Free Agents: {len(free_agents)}")
+        for player in free_agents:
+            self.add_and_drop_player(player, None)
+            self.logger.info(f"{player.name} added to roster")
+            return
 
     def __evaluate_player__(self, player, is_drop=True):
         last_week_score = player.rankings[self.league.time_periods[0]]["weighted_score"]
