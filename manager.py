@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+
+
 import logging
 from league import League
 import yahoo.api as api
@@ -6,7 +9,6 @@ from roster import Roster
 from nhl import NHL
 import cache
 from stats import LeagueStatistics
-from lineup import RosterLineup
 import datetime
 
 logging.basicConfig(
