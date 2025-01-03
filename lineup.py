@@ -80,7 +80,7 @@ class RosterLineup:
                         )
                     else:
                         # Default to season score
-                        weighted_score = player.unified_score
+                        weighted_score = max(player.unified_score, 0.01)
                     score += weighted_score
 
             lineups_attempted += 1
